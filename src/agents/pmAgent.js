@@ -219,7 +219,7 @@ export async function pmAgentNode(state) {
     pmStatus: "spec_ready",
     clarifiedSpec: spec,
     pmConversation: [{ role: "pm", spec }],
-    currentPhase: "done",
+    currentPhase: "architecture",
   };
 }
 

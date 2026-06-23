@@ -1,8 +1,8 @@
 /**
  * Phase 1 graph wiring test.
  *
- * Verifies only the requirement clarification flow:
- * START -> pmAgent -> humanInput -> pmAgent -> END
+ * Verifies the merged Phase 1 + Phase 2 flow:
+ * START -> pmAgent -> humanInput -> pmAgent -> architect steps -> validator -> END
  */
 
 import { MemorySaver } from "@langchain/langgraph";
@@ -65,6 +65,69 @@ async function runTest() {
         pmConversation: [{ role: "user", answers: "Anyone can use it." }],
       };
     },
+    architectStep1Node: () => {
+      nodeOrder.push("architectStep1");
+      return {
+        blueprint: { entities: [{ name: "User" }] },
+      };
+    },
+    architectStep2Node: () => {
+      nodeOrder.push("architectStep2");
+      return {
+        blueprint: {
+          dbSchema: {
+            databaseType: "PostgreSQL",
+            tables: [{ name: "users", fields: [{ name: "id" }], foreignKeys: [] }],
+          },
+        },
+      };
+    },
+    architectStep3Node: () => {
+      nodeOrder.push("architectStep3");
+      return {
+        blueprint: {
+          apiEndpoints: [
+            { method: "GET", path: "/api/users", relatedTable: "users", requiresAuth: false },
+          ],
+        },
+      };
+    },
+    architectStep4Node: () => {
+      nodeOrder.push("architectStep4");
+      return {
+        blueprint: {
+          frontendPages: [
+            {
+              name: "Home",
+              route: "/",
+              requiresAuth: false,
+              components: [{ name: "UserList", apiCalls: ["/api/users"] }],
+            },
+          ],
+        },
+      };
+    },
+    architectStep5Node: () => {
+      nodeOrder.push("architectStep5");
+      return {
+        blueprint: {
+          folderStructure: "backend/\nfrontend/",
+          dependencies: { backend: {}, frontend: {} },
+        },
+      };
+    },
+    blueprintValidatorNode: () => {
+      nodeOrder.push("blueprintValidator");
+      return {
+        blueprintValidation: {
+          isValid: true,
+          issues: [],
+          validationCycles: 1,
+        },
+        currentPhase: "planner",
+      };
+    },
+    blueprintValidatorRouter: () => "__end__",
   });
 
   const finalState = await graph.invoke(
@@ -72,15 +135,26 @@ async function runTest() {
     { configurable: { thread_id: "phase-1-graph-test" } }
   );
 
-  const expectedOrder = ["pmAgent", "humanInput", "pmAgent"];
+  const expectedOrder = [
+    "pmAgent",
+    "humanInput",
+    "pmAgent",
+    "architectStep1",
+    "architectStep2",
+    "architectStep3",
+    "architectStep4",
+    "architectStep5",
+    "blueprintValidator",
+  ];
 
   assert(
     nodeOrder.join(",") === expectedOrder.join(","),
     `Node order is ${expectedOrder.join(" -> ")}`
   );
   assert(finalState.pmStatus === "spec_ready", "PM finished with spec_ready");
-  assert(finalState.currentPhase === "done", "Current phase is done");
+  assert(finalState.currentPhase === "planner", "Current phase is planner");
   assert(finalState.clarifiedSpec?.appName === "test-app", "Clarified spec is stored");
+  assert(finalState.blueprintValidation?.isValid === true, "Blueprint validation is stored");
 
   printSummary();
 }

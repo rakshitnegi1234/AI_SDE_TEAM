@@ -57,13 +57,10 @@ export const AgentState = Annotation.Root({
 
 
 
-
-
-
-
   // ─── ARCHITECT AGENT ──────────────────────────────────────
 
   // Built across 5 steps, each step adds to the blueprint
+
   blueprint: Annotation({
     reducer: (existingBlueprint, incomingBlueprint) => {
       if (!incomingBlueprint) return existingBlueprint;
@@ -314,44 +311,44 @@ export const AgentState = Annotation.Root({
     default: () => 0,
   }),
 
-  // ─── TOKEN TRACKING (V2 NEW) ──────────────────────────────
-  tokenUsage: Annotation({
-    reducer: (existingUsage, incomingUsage) => {
-      if (!incomingUsage) return existingUsage;
+  // // ─── TOKEN TRACKING (V2 NEW) ──────────────────────────────
+  // tokenUsage: Annotation({
+  //   reducer: (existingUsage, incomingUsage) => {
+  //     if (!incomingUsage) return existingUsage;
 
-      return {
-        calls: [
-          ...(existingUsage.calls || []),
-          ...(incomingUsage.newCalls || []),
-        ],
-        totalInput:
-          existingUsage.totalInput + (incomingUsage.addedInput || 0),
-        totalOutput:
-          existingUsage.totalOutput + (incomingUsage.addedOutput || 0),
-        estimatedCost:
-          existingUsage.estimatedCost + (incomingUsage.addedCost || 0),
-      };
-    },
-    default: () => ({
-      calls: [],
-      totalInput: 0,
-      totalOutput: 0,
-      estimatedCost: 0.0,
-    }),
-  }),
+  //     return {
+  //       calls: [
+  //         ...(existingUsage.calls || []),
+  //         ...(incomingUsage.newCalls || []),
+  //       ],
+  //       totalInput:
+  //         existingUsage.totalInput + (incomingUsage.addedInput || 0),
+  //       totalOutput:
+  //         existingUsage.totalOutput + (incomingUsage.addedOutput || 0),
+  //       estimatedCost:
+  //         existingUsage.estimatedCost + (incomingUsage.addedCost || 0),
+  //     };
+  //   },
+  //   default: () => ({
+  //     calls: [],
+  //     totalInput: 0,
+  //     totalOutput: 0,
+  //     estimatedCost: 0.0,
+  //   }),
+  // }),
 
-  tokenBudget: Annotation({
-    reducer: (previousTokenBudget, incomingTokenBudget) =>
-      incomingTokenBudget ?? 2.0,
-    default: () => 2.0,
-  }),
-
-
+  // tokenBudget: Annotation({
+  //   reducer: (previousTokenBudget, incomingTokenBudget) =>
+  //     incomingTokenBudget ?? 2.0,
+  //   default: () => 2.0,
+  // }),
 
 
 
 
-  
+
+
+
   currentPhase: Annotation(
   {
       reducer: (prevphase, newphase) =>

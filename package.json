@@ -8,7 +8,9 @@
     "test": "npm run test:graph && npm run test:pm",
     "test:graph": "node src/test/test_graph.js",
     "test:pm": "node src/test/pm_agents.js",
-    "test:pm:real": "GEMINI_RUN_REAL_TESTS=1 node src/test/pm_agents.js"
+    "test:pm:real": "GEMINI_RUN_REAL_TESTS=1 node src/test/pm_agents.js",
+    "test:architect": "node src/test/test-architect.js",
+    "test:validator": "node src/test/test-validator.js"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.0",

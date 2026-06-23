@@ -28,6 +28,26 @@ export async function safeCallGemini({
   }
 }
 
+export async function safeCallGeminiWithRetry(options, maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await safeCallGemini(options);
+
+    if (result.ok || !isTransientGeminiError(result.error) || attempt === maxAttempts) {
+      return result;
+    }
+
+    const waitMs = 1000 * attempt;
+    console.warn(
+      `[${options.agentName}] transient Gemini error: ${result.error}. Retrying in ${waitMs}ms...`
+    );
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
+
+function isTransientGeminiError(error = "") {
+  return /503|high demand|fetch failed|timed out|timeout|temporarily/i.test(error);
+}
+
 export async function callGemini({
   systemPrompt,
   userPrompt,
