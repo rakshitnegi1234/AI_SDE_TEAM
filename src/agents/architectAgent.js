@@ -48,6 +48,7 @@ function addValidationFixContext(promptParts, state, stepName) {
 }
 
 
+
 // STEP 1: Identify Entities & Relationships + Naming Map
 
 const STEP1_PROMPT = `You are the Architect Agent in an AI software development team.
@@ -69,7 +70,7 @@ Return ONLY valid JSON. Do not include markdown, comments, or explanation.
     {
       "name": "TodoItem",
       "tableName": "todo_items",
-      "apiPath": "/api/todo-items",
+      "apiPath": "/api/v1/todo-items",
       "modelFile": "todoItem",
       "routeFile": "todoItemRoutes",
       "description": "A task or todo entry",
@@ -89,7 +90,7 @@ RULES:
 - Always include a "User" entity if authentication is required.
 - Generate tableName, apiPath, modelFile, and routeFile for every entity.
 - tableName must be snake_case plural.
-- apiPath must be kebab-case plural with /api/ prefix.
+- apiPath must be kebab-case plural with /api/v1/ prefix.
 - modelFile must be camelCase with no extension.
 - routeFile must be camelCase with no extension and should end with "Routes".
 - Entity name must be PascalCase singular.
@@ -127,7 +128,6 @@ export async function architectStep1Node(state)
 
 
 // STEP 2: Design Database Schema
-
 const STEP2_PROMPT = `You are the Architect Agent designing the database schema.
 
 ${NAMING_RULES}
@@ -203,7 +203,6 @@ export async function architectStep2Node(state)
 
 
 // STEP 3: Design API Endpoints
-
 const STEP3_PROMPT = `You are the Architect Agent designing REST API endpoints.
 
 ${NAMING_RULES}
@@ -217,7 +216,7 @@ OUTPUT FORMAT (strict JSON):
   "apiEndpoints": [
     {
       "method": "GET",
-      "path": "/api/todo-items",
+      "path": "/api/v1/todo-items",
       "description": "Get all todos for current user",
       "requiresAuth": true,
       "roleAccess": ["user"],
@@ -230,8 +229,9 @@ OUTPUT FORMAT (strict JSON):
 
 RULES:
 - REST conventions: GET=read, POST=create, PUT/PATCH=update, DELETE=delete.
-- Include auth endpoints if needed: POST /api/auth/register, POST /api/auth/login.
-- Every entity: GET all, GET by id, POST, PUT/PATCH, DELETE.
+- Include auth endpoints if needed: POST /api/v1/auth/register, POST /api/v1/auth/login.
+- Every entity: GET all at apiPath, GET by id at apiPath/:id, POST at apiPath, PUT/PATCH at apiPath/:id, DELETE at apiPath/:id.
+- Use /api/v1 consistently. Do not mix /api and /api/v1.
 - Pagination on GET-all (page, limit query params).
 - relatedTable = the PRIMARY table this endpoint queries. ONE table only.`;
 
@@ -317,12 +317,12 @@ JSON SCHEMA:
         {
           "name": "TodoList",
           "description": "Displays todo items in a list or grid.",
-          "apiCalls": ["GET /api/todo-items"]
+          "apiCalls": ["GET /api/v1/todo-items"]
         },
         {
           "name": "CreateTodoForm",
           "description": "Form for creating a new todo item.",
-          "apiCalls": ["POST /api/todo-items"]
+          "apiCalls": ["POST /api/v1/todo-items"]
         }
       ]
     }
@@ -347,7 +347,7 @@ RULES:
 - Include at least one layout component such as AppLayout, AuthLayout, or PublicLayout.
 - Every page that reads or mutates backend data must list the exact API calls it uses.
 - API calls must use the EXACT endpoint paths provided in the input.
-- Include HTTP methods with API calls, for example GET /api/todos, POST /api/todos.
+- Include HTTP methods with API calls, for example GET /api/v1/todos, POST /api/v1/todos.
 - Do not invent API endpoints that were not provided.
 - Use clean, user-friendly routes such as /dashboard, /login, /register, /todos.
 - Do not use vague routes such as /page1, /screen, or /home unless they are clearly required.
@@ -398,8 +398,6 @@ export async function architectStep4Node(state)
 }
 
 
-
-
 // STEP 5: Folder Structure + Dependencies
 
 const STEP5_PROMPT = `
@@ -409,6 +407,7 @@ TECH STACK:
 - Backend: Express.js
 - Frontend: React with Vite
 - Architecture: Monorepo with /backend and /frontend folders
+- Scaffold contract: backend/src/index.js, backend/src/config/db.js, backend/src/middleware/auth.js, frontend/src/main.jsx, frontend/src/App.jsx, frontend/src/index.css, and frontend config files are auto-scaffolded by the sandbox manager.
 
 TASK:
 Generate:
@@ -418,11 +417,11 @@ Generate:
 
 INPUT YOU WILL RECEIVE:
 - App specification
-- Database choice
+- Entity naming map with tableName, apiPath, modelFile, and routeFile
+- Full database schema and database choice
 - Backend API endpoints
-- Frontend pages
+- Frontend pages and shared components
 - Authentication requirements
-- Entity/model information
 
 OUTPUT FORMAT:
 Return ONLY valid JSON. Do not include markdown, comments, explanations, or extra text.
@@ -466,21 +465,26 @@ JSON SCHEMA:
 
 FOLDER STRUCTURE RULES:
 
+Return a tree-format string rooted at the project root. Include the standard scaffold files plus generated model, route, controller, page, component, context, hook, and utility files required by the blueprint.
+
 Backend must use this structure:
+
 backend/
   package.json
   .env.example
   src/
-    server.js
-    app.js
+    index.js
     config/
+      db.js
     models/
     routes/
     controllers/
     middleware/
+      auth.js
     utils/
 
 Frontend must use this structure:
+
 frontend/
   package.json
   index.html
@@ -490,6 +494,7 @@ frontend/
   src/
     main.jsx
     App.jsx
+    index.css
     pages/
     components/
     context/
@@ -497,6 +502,7 @@ frontend/
     utils/
 
 DEPENDENCY RULES:
+
 - Always include the required package names.
 - Prefer the versions shown in the schema, but newer versions in the same major version are allowed.
 - Always include backend dependencies:
@@ -523,15 +529,16 @@ DEPENDENCY RULES:
 
 PROJECT STRUCTURE RULES:
 - Folder/file names must match the generated backend entities, API routes, and frontend pages.
-- Backend routes should go inside src/routes/.
-- Backend controllers should go inside src/controllers/.
-- Backend database models should go inside src/models/.
+- Backend database model files must use each entity.modelFile with ".js" in src/models/.
+- Backend route files must use each entity.routeFile with ".js" in src/routes/.
+- Backend controller files should use each entity.modelFile plus "Controller.js" in src/controllers/ when controller logic is needed.
+- Frontend page files must use each frontend page name with ".jsx" in src/pages/.
+- Shared component files must use shared component/component names with ".jsx" in src/components/.
 - Auth middleware should go inside src/middleware/.
 - Database connection config should go inside src/config/.
-- Frontend pages should go inside src/pages/.
-- Reusable frontend UI components should go inside src/components/.
 - Auth/global state should go inside src/context/.
 - API helper functions should go inside src/utils/.
+- Do not include Dockerfile or docker-compose.yml; those are generated by the sandbox manager.
 - Do not include unnecessary folders.
 - Do not generate actual file contents.
 - Only generate the folder tree and dependencies.
@@ -540,12 +547,29 @@ export async function architectStep5Node(state)
 {
   console.log("\n[Architect Step 5/5] Generating folder structure and dependencies\n");
 
-  const { dbSchema, apiEndpoints, frontendPages } = state.blueprint;
+  const { entities, dbSchema, apiEndpoints, frontendPages, sharedComponents, routingNotes } = state.blueprint;
+
+  const entityMap = (entities || []).map((entity) => ({
+    name: entity.name,
+    tableName: entity.tableName,
+    apiPath: entity.apiPath,
+    modelFile: entity.modelFile,
+    routeFile: entity.routeFile,
+  }));
 
   const promptParts = [
-    `DB: ${dbSchema?.databaseType} (${dbSchema?.tables?.length} tables)`,
-    `APIs: ${apiEndpoints?.length} endpoints`,
-    `Pages: ${frontendPages?.length} pages`,
+    "Entity Naming Map:",
+    JSON.stringify(entityMap, null, 2),
+    "DB Schema:",
+    JSON.stringify(dbSchema, null, 2),
+    "API Endpoints:",
+    JSON.stringify(apiEndpoints, null, 2),
+    "Frontend Pages:",
+    JSON.stringify(frontendPages, null, 2),
+    "Shared Components:",
+    JSON.stringify(sharedComponents || [], null, 2),
+    "Routing Notes:",
+    JSON.stringify(routingNotes || [], null, 2),
     "Use this project specification as the source of truth:",
     JSON.stringify(state.clarifiedSpec, null, 2),
   ];
@@ -564,9 +588,6 @@ export async function architectStep5Node(state)
   }
 
   const output = result.parsed;
-  const backendDependencies = output.dependencies?.backend?.dependencies || {};
-  const frontendDependencies = output.dependencies?.frontend?.dependencies || {};
-
 
   return {
     blueprint: {

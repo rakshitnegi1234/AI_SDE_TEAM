@@ -114,7 +114,7 @@ async function test3() {
         ],
       },
       apiEndpoints: [
-        { method: "GET", path: "/api/tasks", relatedTable: "tasks", requiresAuth: true },
+        { method: "GET", path: "/api/v1/tasks", relatedTable: "tasks", requiresAuth: true },
         // "tasks" table doesn't exist!
       ],
       frontendPages: [],
@@ -156,8 +156,8 @@ async function test4() {
         ],
       },
       apiEndpoints: [
-        { method: "GET", path: "/api/users", relatedTable: "users", requiresAuth: true },
-        { method: "GET", path: "/api/tasks", relatedTable: "tasks", requiresAuth: true },
+        { method: "GET", path: "/api/v1/users", relatedTable: "users", requiresAuth: true },
+        { method: "GET", path: "/api/v1/tasks", relatedTable: "tasks", requiresAuth: true },
       ],
       frontendPages: [
         {
@@ -165,7 +165,7 @@ async function test4() {
           route: "/dashboard",
           requiresAuth: true,
           components: [
-            { name: "TaskList", description: "Shows tasks", apiCalls: ["GET /api/tasks"] },
+            { name: "TaskList", description: "Shows tasks", apiCalls: ["GET /api/v1/tasks"] },
           ],
         },
       ],
@@ -174,13 +174,14 @@ backend/
   package.json
   .env.example
   src/
-    server.js
-    app.js
+    index.js
     config/
+      db.js
     models/
     routes/
     controllers/
     middleware/
+      auth.js
     utils/
 frontend/
   package.json
@@ -191,6 +192,7 @@ frontend/
   src/
     main.jsx
     App.jsx
+    index.css
     pages/
     components/
     context/
@@ -257,7 +259,7 @@ async function test5() {
         ],
       },
       apiEndpoints: [
-        { method: "GET", path: "/api/users", relatedTable: "users", requiresAuth: false },
+        { method: "GET", path: "/api/v1/users", relatedTable: "users", requiresAuth: false },
       ],
       frontendPages: [
         {
@@ -265,7 +267,7 @@ async function test5() {
           route: "/",
           requiresAuth: false,
           components: [
-            { name: "UserList", description: "Shows users", apiCalls: ["GET /api/users"] },
+            { name: "UserList", description: "Shows users", apiCalls: ["GET /api/v1/users"] },
           ],
         },
       ],
@@ -273,13 +275,14 @@ async function test5() {
 backend/
   package.json
   .env.example
-  server.js
-  app.js
+  index.js
   config/
+    db.js
   models/
   routes/
   controllers/
   middleware/
+    auth.js
   utils/
 frontend/
   package.json
@@ -289,6 +292,7 @@ frontend/
   postcss.config.js
   main.jsx
   App.jsx
+  index.css
   pages/
   components/
   context/

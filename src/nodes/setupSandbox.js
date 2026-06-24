@@ -3,7 +3,7 @@
  * 
  * Passes the Architect's dbSchema to sandboxManager so that:
  * - Database container starts with correct image
- * - Tables are created from the schema
+ * - Tables are created from the schema`
  * - Backend has DATABASE_URL set
  * - Frontend has VITE_API_URL set
  */

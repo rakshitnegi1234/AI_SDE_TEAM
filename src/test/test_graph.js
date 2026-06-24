@@ -86,7 +86,7 @@ async function runTest() {
       return {
         blueprint: {
           apiEndpoints: [
-            { method: "GET", path: "/api/users", relatedTable: "users", requiresAuth: false },
+            { method: "GET", path: "/api/v1/users", relatedTable: "users", requiresAuth: false },
           ],
         },
       };
@@ -100,7 +100,7 @@ async function runTest() {
               name: "Home",
               route: "/",
               requiresAuth: false,
-              components: [{ name: "UserList", apiCalls: ["/api/users"] }],
+              components: [{ name: "UserList", apiCalls: ["GET /api/v1/users"] }],
             },
           ],
         },

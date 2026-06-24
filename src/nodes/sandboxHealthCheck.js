@@ -1,6 +1,5 @@
-/**
- * sandboxHealthCheck.js — Verifies all containers are healthy
- */
+// sandboxHealthCheck.js — Verifies all containers are healthy
+ 
 
 import { healthCheck, getSandboxInfo } from "../utils/sandboxManager.js";
 

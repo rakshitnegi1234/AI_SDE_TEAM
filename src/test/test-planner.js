@@ -11,9 +11,9 @@ console.log("\n🧪 TEST: Planner Agent\n");
 
 const MOCK_BLUEPRINT = {
   entities: [
-    { name: "User", description: "App user" },
-    { name: "Task", description: "A todo task" },
-    { name: "Category", description: "Task category" },
+    { name: "User", tableName: "users", apiPath: "/api/v1/users", modelFile: "user", routeFile: "userRoutes", description: "App user" },
+    { name: "Task", tableName: "tasks", apiPath: "/api/v1/tasks", modelFile: "task", routeFile: "taskRoutes", description: "A todo task" },
+    { name: "Category", tableName: "categories", apiPath: "/api/v1/categories", modelFile: "category", routeFile: "categoryRoutes", description: "Task category" },
   ],
   dbSchema: {
     databaseType: "PostgreSQL",
@@ -24,12 +24,12 @@ const MOCK_BLUEPRINT = {
     ],
   },
   apiEndpoints: [
-    { method: "POST", path: "/api/auth/register", relatedTable: "users" },
-    { method: "POST", path: "/api/auth/login", relatedTable: "users" },
-    { method: "GET", path: "/api/tasks", relatedTable: "tasks", requiresAuth: true },
-    { method: "POST", path: "/api/tasks", relatedTable: "tasks", requiresAuth: true },
-    { method: "GET", path: "/api/categories", relatedTable: "categories", requiresAuth: true },
-    { method: "POST", path: "/api/categories", relatedTable: "categories", requiresAuth: true },
+    { method: "POST", path: "/api/v1/auth/register", relatedTable: "users" },
+    { method: "POST", path: "/api/v1/auth/login", relatedTable: "users" },
+    { method: "GET", path: "/api/v1/tasks", relatedTable: "tasks", requiresAuth: true },
+    { method: "POST", path: "/api/v1/tasks", relatedTable: "tasks", requiresAuth: true },
+    { method: "GET", path: "/api/v1/categories", relatedTable: "categories", requiresAuth: true },
+    { method: "POST", path: "/api/v1/categories", relatedTable: "categories", requiresAuth: true },
   ],
   frontendPages: [
     { name: "Login", route: "/login", components: [{ name: "LoginForm" }] },

@@ -98,9 +98,8 @@ function waitForContainer(containerId, checkCmd, maxAttempts = 20) {
   return false;
 }
 
-// ═══════════════════════════════════════════════════════════════
 // CREATE SANDBOX
-// ═══════════════════════════════════════════════════════════════
+
 
 export async function createSandbox(folderStructure, dependencies, dbSchema) {
   const sandboxId = `sandbox-${Date.now()}`;
@@ -111,7 +110,7 @@ export async function createSandbox(folderStructure, dependencies, dbSchema) {
   console.log(`   📂 Creating sandbox: ${sandboxPath}`);
   console.log(`   🐳 Docker: ${canUseDocker ? "ENABLED" : "DISABLED"}`);
 
-  // ─── Step 1: Create local folder structure ────────────────
+  //  Step 1: Create local folder structure 
 
   fs.mkdirSync(sandboxPath, { recursive: true });
 
@@ -120,7 +119,7 @@ export async function createSandbox(folderStructure, dependencies, dbSchema) {
   fs.mkdirSync(backendPath, { recursive: true });
   fs.mkdirSync(frontendPath, { recursive: true });
 
-  const backendDirs = ["src", "src/models", "src/routes", "src/middleware", "src/config", "src/utils"];
+  const backendDirs = ["src", "src/models", "src/routes", "src/controllers", "src/middleware", "src/config", "src/utils"];
   const frontendDirs = ["src", "src/pages", "src/components", "src/hooks", "src/context", "src/utils"];
   backendDirs.forEach(d => fs.mkdirSync(path.join(backendPath, d), { recursive: true }));
   frontendDirs.forEach(d => fs.mkdirSync(path.join(frontendPath, d), { recursive: true }));
@@ -139,7 +138,7 @@ export async function createSandbox(folderStructure, dependencies, dbSchema) {
     }
   }
 
-  // ─── Step 2: Write package.json files ─────────────────────
+  // ── Step 2: Write package.json files 
 
   if (dependencies?.backend) {
     fs.writeFileSync(path.join(backendPath, "package.json"), JSON.stringify({

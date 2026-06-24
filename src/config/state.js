@@ -96,68 +96,52 @@ export const AgentState = Annotation.Root({
   }),
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
   //  PLANNER AGENT 
 
   taskQueue: Annotation({
-    reducer: (previousTaskQueue, incomingTaskQueue) =>
-      incomingTaskQueue ?? { phases: [] },
-    default: () => ({ phases: [] }),
+      reducer: (prevtaskQueue, newtaskQueue) =>
+      newtaskQueue ?? prevtaskQueue,
+      default: () => ({ phases: [] }),
   }),
 
   currentPhaseIndex: Annotation({
-    reducer: (previousPhaseIndex, incomingPhaseIndex) =>
-      incomingPhaseIndex ?? 0,
-    default: () => 0,
+     reducer: (prevPhase, newPhase) =>
+      newPhase ?? prevPhase,
+     default: () => 0,
   }),
 
   currentTaskIndex: Annotation({
-    reducer: (previousTaskIndex, incomingTaskIndex) =>
-      incomingTaskIndex ?? 0,
-    default: () => 0,
+     reducer: (prevTask, newTask) =>
+      newTask ?? prevTask,
+     default: () => 0,
+  }),
+
+
+    // SANDBOX 
+  sandboxId: Annotation({
+    reducer: (prevSandId, newSandId) =>
+      newSandId ?? newSandId,
+    default: () => "",
+  }),
+
+  sandboxHealthy: Annotation({
+    reducer: (prevhealthStatus, newhealthStatus) =>
+      newhealthStatus ?? prevhealthStatus,
+    default: () => false,
   }),
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // ─── FILE INTERFACE REGISTRY ──────────────────────────────
+  //  FILE INTERFACE REGISTRY 
   // Grows after every task — needs accumulating reducer
+  
   fileRegistry: Annotation({
     reducer: (existingFiles, incomingFiles) => {
       if (!incomingFiles) return existingFiles;
 
       if (Array.isArray(incomingFiles)) {
-        const fileMap = new Map(
+         const fileMap = new Map(
           existingFiles.map((file) => [file.path, file])
         );
 
@@ -172,6 +156,12 @@ export const AgentState = Annotation.Root({
     },
     default: () => [],
   }),
+
+
+
+
+
+
 
   // ─── PROJECT PATTERNS (V2 NEW) ───────────────────────────
   projectPatterns: Annotation({
@@ -193,18 +183,7 @@ export const AgentState = Annotation.Root({
     }),
   }),
 
-  // ─── SANDBOX ──────────────────────────────────────────────
-  sandboxId: Annotation({
-    reducer: (previousSandboxId, incomingSandboxId) =>
-      incomingSandboxId ?? "",
-    default: () => "",
-  }),
 
-  sandboxHealthy: Annotation({
-    reducer: (previousHealthStatus, incomingHealthStatus) =>
-      incomingHealthStatus ?? false,
-    default: () => false,
-  }),
 
   // ─── DEV LOOP (Phase 4) ──────────────────────────────────
   currentTask: Annotation({
@@ -288,6 +267,9 @@ export const AgentState = Annotation.Root({
     }),
   }),
 
+
+
+
   //  USER FEEDBACK 
   userFeedback: Annotation({
     reducer: (existingFeedback, incomingFeedback) => {
@@ -325,6 +307,8 @@ export const AgentState = Annotation.Root({
       incomingUserSatisfied ?? false,
     default: () => false,
   }),
+
+
 
 
 
