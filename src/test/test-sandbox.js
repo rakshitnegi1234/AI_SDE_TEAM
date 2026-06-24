@@ -2,14 +2,13 @@
  * test-sandbox.js — Test Sandbox Manager with Docker
  * Run: node tests/test-sandbox.js
  * 
- * Tests Docker-powered sandbox:
- * 1. Creates sandbox with Docker container
- * 2. Health check passes (including Docker verification)
- * 3. npm install ran inside container
- * 4. Write/read files (local filesystem)
- * 5. Execute commands INSIDE Docker container
- * 6. Git snapshot and rollback
- * 7. Destroy sandbox (removes container + files)
+ * Tests sandbox workspace/runtime:
+ * 1. Creates sandbox folders and optional Docker containers
+ * 2. Health check passes before app files exist
+ * 3. Write/read files as the AI coding loop would
+ * 4. Execute commands inside Docker when available
+ * 5. Git snapshot and rollback
+ * 6. Destroy sandbox
  */
 
 import {
@@ -62,8 +61,16 @@ async function runTest() {
     }
     console.log(`  Docker enabled: ${health.dockerEnabled}`);
 
-    // ─── Test 3: Write and read files ───
-    console.log("\n  ─── Test 3: Write/Read Files ───\n");
+    // ─── Test 3: Write and read generated files ───
+    console.log("\n  ─── Test 3: Write/Read Generated Files ───\n");
+
+    writeFile(sandboxId, "backend/package.json", JSON.stringify({
+      name: "test-backend",
+      version: "1.0.0",
+      type: "module",
+      scripts: { start: "node src/index.js" },
+      dependencies: { express: "^4.18.2", cors: "^2.8.5" },
+    }, null, 2));
 
     writeFile(sandboxId, "backend/src/index.js", `
 import express from "express";
@@ -92,12 +99,8 @@ app.listen(PORT, () => console.log("Server running on port " + PORT));
     console.log(`  Node version: ${nodeVersion.stdout.trim()}`);
     assert(nodeVersion.exitCode === 0, `Node available (${nodeVersion.stdout.trim()})`);
 
-    // Check if express was installed by npm install during sandbox creation
     if (info?.dockerEnabled) {
-      const expressCheck = executeCommand(sandboxId, "ls /app/backend/node_modules/express/package.json 2>/dev/null");
-      assert(expressCheck.exitCode === 0, "Express installed in container");
-
-      // Syntax check inside container
+      // Syntax check inside container. Dependency install is a later generated-app step.
       const syntaxCheck = executeCommand(sandboxId, "node --check /app/backend/src/index.js");
       assert(syntaxCheck.exitCode === 0, "index.js syntax valid in Docker");
     }
@@ -121,7 +124,7 @@ app.listen(PORT, () => console.log("Server running on port " + PORT));
     const files = getFileList(sandboxId);
     assert(files.length > 0, `Found ${files.length} files`);
     assert(files.some(f => f.includes("package.json")), "Has package.json");
-    assert(files.some(f => f.includes("docker-compose")), "Has docker-compose.yml");
+    assert(!files.some(f => f.includes("docker-compose")), "Sandbox does not create docker-compose.yml");
 
     // ─── Test 7: Cleanup ───
     console.log("\n  ─── Test 7: Destroy Sandbox ───\n");

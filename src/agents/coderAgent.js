@@ -1,7 +1,7 @@
 import { safeCallGemini } from "../utils/gemini.js";
-import { getFileList, readFile, writeFile } from "../utils/sandboxManager.js";
+import { readFile, writeFile } from "../utils/sandboxManager.js";
 
-const BACKEND_PROMPT = `You are a senior backend developer. Write ONE file.
+const BACKEND_PROMPT = `You are a senior backend developer. Write ONE backend-side project file.
 
 OUTPUT FORMAT (strict JSON - single file only):
 {
@@ -11,17 +11,20 @@ OUTPUT FORMAT (strict JSON - single file only):
 }
 
 RULES:
-- ES module syntax only. Use import/export, never require.
-- Express: use Router(), router.get/post/put/delete.
-- DB: always use parameterized queries. Never concatenate SQL strings.
-- Models: return clean data, not raw { rows }. Mark async functions.
+- The requested file may be JavaScript, JSON, .env.example, Markdown, or config.
+- For JavaScript, use ES module syntax only. Use import/export, never require.
+- For package.json, include scripts and dependencies from the provided dependency contract.
+- For .env.example, include placeholder values only, never real secrets.
+- For Express files, use Router(), router.get/post/put/delete.
+- For DB code, always use parameterized queries. Never concatenate SQL strings.
+- For models, return clean data, not raw { rows }. Mark async functions.
 - Response format everywhere: { success: true/false, data: ... } or { success: false, message: "..." }.
-- Auth: use the existing scaffolded auth middleware when needed.
+- If writing auth middleware, export authenticateToken and authorizeRole when auth is required.
 - Env vars: process.env.DATABASE_URL, process.env.JWT_SECRET, process.env.PORT.
 - Include .js extension in all local imports.
 - Write complete files. No TODOs or placeholders.`;
 
-const FRONTEND_PROMPT = `You are a senior React developer. Write ONE file.
+const FRONTEND_PROMPT = `You are a senior React developer. Write ONE frontend-side project file.
 
 OUTPUT FORMAT (strict JSON - single file only):
 {
@@ -31,28 +34,33 @@ OUTPUT FORMAT (strict JSON - single file only):
 }
 
 RULES:
-- Functional components with hooks.
-- Use Tailwind CSS. Do not use inline styles or CSS modules.
-- Import the existing api utility with a correct relative path.
+- The requested file may be JSX, JavaScript, JSON, HTML, CSS, or config.
+- For React files, use functional components with hooks.
+- Use Tailwind CSS in JSX. Do not use inline styles or CSS modules.
+- For package.json, include scripts and dependencies from the provided dependency contract.
+- For .env.example, include placeholder values only.
+- Import the api utility with a correct relative path after it exists.
 - Use react-router-dom for navigation.
 - Include loading, error, and empty states where data is fetched.
 - Forms must use controlled inputs and prevent default submit behavior.
 - Never use process.env in frontend files. Use import.meta.env when needed.
 - Write complete files. No TODOs or placeholders.`;
 
-const SCAFFOLD_FILES = new Set([
-  "backend/src/index.js",
-  "backend/src/config/db.js",
-  "backend/src/middleware/auth.js",
-  "frontend/index.html",
-  "frontend/src/main.jsx",
-  "frontend/src/App.jsx",
-  "frontend/src/index.css",
-  "frontend/src/utils/api.js",
-  "frontend/tailwind.config.js",
-  "frontend/postcss.config.js",
-  "frontend/vite.config.js",
-]);
+const GENERAL_PROMPT = `You are a senior full-stack developer. Write ONE project file.
+
+OUTPUT FORMAT (strict JSON - single file only):
+{
+  "path": ".gitignore",
+  "content": "# Full file content here",
+  "notes": "Brief explanation"
+}
+
+RULES:
+- The requested file may be JSON, Markdown, .gitignore, .env.example, JavaScript, JSX, HTML, CSS, or config.
+- For package.json, include scripts and dependencies from the provided dependency contract.
+- For .env.example, include placeholder values only, never real secrets.
+- For JavaScript/JSX, use ES module syntax.
+- Write complete files. No TODOs or placeholders.`;
 
 export async function coderAgentNode(state) {
   console.log("\n[Coder Agent] Writing code...\n");
@@ -66,13 +74,6 @@ export async function coderAgentNode(state) {
 
   const filesToCreate = contextPackage.task.filesToCreate || [];
   const isRetry = state.reviewResult?.verdict === "rejected" && state.reviewResult?.issues?.length > 0;
-
-  let existingFiles = [];
-  try {
-    existingFiles = getFileList(sandboxId);
-  } catch {
-    existingFiles = [];
-  }
 
   let sharedContext = "";
 
@@ -103,11 +104,8 @@ export async function coderAgentNode(state) {
     sharedContext += `API ENDPOINTS:\n${JSON.stringify(contextPackage.apiEndpoints, null, 2)}\n\n`;
   }
 
-  const scaffoldOnDisk = existingFiles.filter((filePath) => SCAFFOLD_FILES.has(filePath));
-  if (scaffoldOnDisk.length > 0) {
-    sharedContext += "ALREADY EXISTS. Do not recreate these; import from them when needed:\n";
-    for (const filePath of scaffoldOnDisk) sharedContext += `  - ${filePath}\n`;
-    sharedContext += "\n";
+  if (contextPackage.dependencies) {
+    sharedContext += `DEPENDENCY CONTRACT:\n${JSON.stringify(contextPackage.dependencies, null, 2)}\n\n`;
   }
 
   if (contextPackage.templateFile) {
@@ -127,15 +125,11 @@ export async function coderAgentNode(state) {
   const writtenFiles = [];
 
   for (const filePath of filesToCreate) {
-    if (SCAFFOLD_FILES.has(filePath)) {
-      console.log(`   Skip scaffold file: ${filePath}`);
-      continue;
-    }
-
     console.log(`   Generating: ${filePath}`);
 
-    const isBackend = filePath.includes("backend");
-    const systemPrompt = isBackend ? BACKEND_PROMPT : FRONTEND_PROMPT;
+    const isBackend = filePath.startsWith("backend/");
+    const isFrontend = filePath.startsWith("frontend/");
+    const systemPrompt = isBackend ? BACKEND_PROMPT : isFrontend ? FRONTEND_PROMPT : GENERAL_PROMPT;
 
     let userPrompt = `FILE TO WRITE: ${filePath}\n`;
     userPrompt += `TASK: ${currentTask.title}\n`;

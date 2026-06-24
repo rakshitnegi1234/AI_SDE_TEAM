@@ -1,42 +1,69 @@
-// sandboxHealthCheck.js — Verifies all containers are healthy
- 
+// sandboxHealthCheck.js
+// Verifies sandbox containers and workspace health.
 
 import { healthCheck, getSandboxInfo } from "../utils/sandboxManager.js";
 
 export async function sandboxHealthCheckNode(state) {
-  console.log("\n🏥 [Sandbox Health Check] Verifying workspace...\n");
+  console.log("\n[Sandbox Health Check] Verifying workspace...\n");
 
   const { sandboxId } = state;
 
   if (!sandboxId) {
-    console.log("   ❌ No sandbox ID");
-    return { sandboxHealthy: false, error: "No sandbox ID" };
+    return markSandboxUnhealthy("No sandbox ID found.");
   }
 
-  const info = getSandboxInfo(sandboxId);
-  const result = await healthCheck(sandboxId);
+  const sandboxInfo = getSandboxInfo(sandboxId);
+  const healthResult = await healthCheck(sandboxId);
 
-  if (result.healthy) {
-    console.log("   ✅ All health checks passed!");
-    console.log(`   📂 Path: ${result.sandboxPath}`);
-    if (info) {
-      console.log(`   🗄️  DB: ${info.dbType} (${info.dbContainer || "none"})`);
-      console.log(`   🖥️  Backend: ${info.backendContainer || "none"}`);
-      console.log(`   🎨 Frontend: ${info.frontendContainer || "none"}`);
-    }
-    return { sandboxHealthy: true };
+  if (!healthResult.healthy) {
+    return handleFailedHealthCheck(healthResult);
   }
 
-  console.log("   ❌ Health check failures:");
-  result.failures.forEach(f => console.log(`   • ${f}`));
+  printHealthySandbox(healthResult, sandboxInfo);
 
   return {
-    sandboxHealthy: false,
-    error: `Sandbox unhealthy: ${result.failures.join("; ")}`,
+    sandboxHealthy: true,
+    error: null,
   };
 }
 
+function markSandboxUnhealthy(message) {
+  console.log(`Health check failed: ${message}`);
+
+  return {
+    sandboxHealthy: false,
+    error: message,
+  };
+}
+
+function handleFailedHealthCheck(healthResult) {
+  const failures = healthResult.failures || [];
+
+  console.log("Health check failed. Issues found:");
+
+  failures.forEach((failure) => {
+    console.log(`- ${failure}`);
+  });
+
+  return {
+    sandboxHealthy: false,
+    error: `Sandbox unhealthy: ${failures.join("; ")}`,
+  };
+}
+
+function printHealthySandbox(healthResult, sandboxInfo) {
+  console.log("Health check passed.");
+  console.log(`Workspace path: ${healthResult.sandboxPath}`);
+
+  if (!sandboxInfo) {
+    return;
+  }
+
+  console.log(`Database: ${sandboxInfo.dbType} (${sandboxInfo.dbContainer || "none"})`);
+  console.log(`Backend container: ${sandboxInfo.backendContainer || "none"}`);
+  console.log(`Frontend container: ${sandboxInfo.frontendContainer || "none"}`);
+}
+
 export function sandboxHealthRouter(state) {
-  if (state.sandboxHealthy) return "__end__";
-  return "__end__"; // For now, don't retry — show error and stop
+  return state.sandboxHealthy ? "__end__" : "__end__";
 }
