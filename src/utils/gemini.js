@@ -15,16 +15,25 @@ export async function safeCallGemini({
   systemPrompt,
   userPrompt,
   agentName,
+  model = null,
+  maxTokens = null,
 }) {
   try {
     const result = await callGemini({
       systemPrompt,
       userPrompt,
       agentName,
+      model,
+      maxTokens,
     });
     return { ok: true, ...result };
   } catch (error) {
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: error.message,
+      parsed: null,
+      raw: "",
+    };
   }
 }
 
@@ -52,10 +61,12 @@ export async function callGemini({
   systemPrompt,
   userPrompt,
   agentName = "unknown",
+  model = null,
+  maxTokens = null,
 }) {
   if (!apiKey) throw new Error("Gemini client is not initialized.");
 
-  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+  const modelName = model || process.env.GEMINI_MODEL || DEFAULT_MODEL;
   const fullPrompt = `${userPrompt}
 
 ---
@@ -68,7 +79,7 @@ Return only valid JSON. No markdown.`;
 
   try {
     const response = await fetch(
-      `${process.env.GEMINI_BASE_URL || GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`,
+      `${process.env.GEMINI_BASE_URL || GEMINI_BASE_URL}/models/${modelName}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,7 +95,7 @@ Return only valid JSON. No markdown.`;
           generationConfig: {
             temperature: Number.parseFloat(process.env.GEMINI_TEMPERATURE || "0.7"),
             topP: Number.parseFloat(process.env.GEMINI_TOP_P || "0.95"),
-            maxOutputTokens: Number.parseInt(process.env.GEMINI_MAX_TOKENS || "8192", 10),
+            maxOutputTokens: maxTokens || Number.parseInt(process.env.GEMINI_MAX_TOKENS || "8192", 10),
             responseMimeType: "application/json",
           },
         }),

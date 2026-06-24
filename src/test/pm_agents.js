@@ -40,7 +40,6 @@ async function runOfflineTests() {
   const result = await pmAgentNode(baseState());
 
   assert(result.pmStatus === "failed", `PM reports failed status when client is not initialized: ${result.pmStatus}`);
-  assert(result.currentPhase === "error", `Current phase moves to error: ${result.currentPhase}`);
   assert(typeof result.error === "string" && result.error.includes("Gemini client is not initialized"), "Failure reason is exposed");
 
   printSummary();

@@ -1,26 +1,92 @@
 const MAX_VALIDATION_CYCLES = 2;
 
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete"];
+
+const REQUIRED_BACKEND_FILES = [
+  "backend/",
+  "package.json",
+  ".env.example",
+  "server.js",
+  "app.js",
+  "config/",
+  "models/",
+  "routes/",
+  "controllers/",
+  "middleware/",
+  "utils/",
+];
+
+const REQUIRED_FRONTEND_FILES = [
+  "frontend/",
+  "package.json",
+  "index.html",
+  "vite.config.js",
+  "tailwind.config.js",
+  "postcss.config.js",
+  "main.jsx",
+  "App.jsx",
+  "pages/",
+  "components/",
+  "context/",
+  "hooks/",
+  "utils/",
+];
+
+const REQUIRED_BACKEND_DEPENDENCIES = [
+  ["express", "^4.18.2"],
+  ["cors", "^2.8.5"],
+  ["dotenv", "^16.4.7"],
+  ["bcryptjs", "^2.4.3"],
+  ["jsonwebtoken", "^9.0.2"],
+  ["uuid", "^9.0.0"],
+];
+
+const REQUIRED_FRONTEND_DEPENDENCIES = [
+  ["react", "^18.2.0"],
+  ["react-dom", "^18.2.0"],
+  ["react-router-dom", "^6.20.0"],
+  ["axios", "^1.6.0"],
+];
+
+const REQUIRED_FRONTEND_DEV_DEPENDENCIES = [
+  ["vite", "^5.0.0"],
+  ["@vitejs/plugin-react", "^4.2.0"],
+  ["tailwindcss", "^3.4.0"],
+  ["postcss", "^8.4.0"],
+  ["autoprefixer", "^10.4.0"],
+];
+
+const CORE_BLUEPRINT_CHECKS = [
+  validateEntityTables,
+  validateForeignKeys,
+  validateApiTables,
+  validateFrontendApiCalls,
+  validateAuthRules,
+  validateUnusedTables,
+];
+
+const PROJECT_SETUP_CHECKS = [
+  validateProjectStructure,
+  validateDependencies,
+];
+
+
 export async function blueprintValidatorNode(state) {
-  console.log("\n[Blueprint Validator] Cross-validating architecture\n");
+  console.log("\n[Blueprint Validator] Checking full architecture blueprint\n");
 
   const blueprint = state.blueprint || {};
   const issues = [];
 
-  checkEntityTables(blueprint, issues);
-  checkForeignKeys(blueprint, issues);
-  checkApiTables(blueprint, issues);
-  checkFrontendApiCalls(blueprint, issues);
-  checkAuthConsistency(blueprint, issues);
-  checkOrphanTables(blueprint, issues);
+  // First validate the actual architecture: entities, tables, APIs, and pages.
+  // If these are broken, folder/dependency feedback would only add noise.
+  
+  runChecks(CORE_BLUEPRINT_CHECKS, blueprint, issues);
 
-  const hasCoreErrors = issues.some((issue) => issue.severity === "error");
-
-  if (!hasCoreErrors) {
-    checkFolderStructure(blueprint, issues);
-    checkDependencies(blueprint, issues);
+  if (!hasErrors(issues)) {
+    runChecks(PROJECT_SETUP_CHECKS, blueprint, issues);
   }
 
-  return buildValidationResult(state, issues);
+  return finishValidation(state, issues);
 }
 
 export function blueprintValidatorRouter(state) {
@@ -31,277 +97,214 @@ export function blueprintValidatorRouter(state) {
   }
 
   const issues = validation?.issues || [];
-  const errors = issues.filter((issue) => issue.severity === "error");
-  const target = errors[0]?.fixTarget || mostCommonFixTarget(issues);
+  const firstError = issues.find((issue) => issue.severity === "error");
+  const route = firstError?.fixTarget || findMostCommonFixTarget(issues);
 
-  if (!target) {
+  if (!route) {
     return "__end__";
   }
 
-  console.log(`Routing back to ${target} for fixes\n`);
-  return target;
+  console.log(`Routing back to ${route} for fixes\n`);
+  return route;
 }
 
 
 
 
-function checkEntityTables(blueprint, issues) {
-  const entities = blueprint.entities || [];
+
+
+
+
+
+
+
+
+function validateEntityTables(blueprint, issues) {
   const tables = blueprint.dbSchema?.tables || [];
-  const tableNames = new Set(tables.map((table) => table.name?.toLowerCase()));
+  const tableNames = tables.map((table) => normalizeName(table.name));
 
-  for (const entity of entities) {
-    const expectedTable = entity.tableName?.toLowerCase();
-    const fallbackTable = toSnakePlural(entity.name);
+  for (const entity of blueprint.entities || []) {
+    if (!entity.tableName) {
+      addIssue(issues, "missing_entity_table_name", "error", "architectStep1",
+        `Entity "${entity.name}" does not define tableName.`);
+      continue;
+    }
 
-    if (!tableNames.has(expectedTable || fallbackTable)) {
-      issues.push({
-        type: "missing_table",
-        severity: "error",
-        fixTarget: "architectStep2",
-        message: `Entity "${entity.name}" expects table "${expectedTable || fallbackTable}", but it was not found.`,
-      });
+    if (!tableNames.includes(normalizeName(entity.tableName))) {
+      addIssue(issues, "missing_table", "error", "architectStep2",
+        `Entity "${entity.name}" expects table "${entity.tableName}", but that table was not found.`);
     }
   }
 }
 
-function checkForeignKeys(blueprint, issues) {
+function validateForeignKeys(blueprint, issues) {
   const tables = blueprint.dbSchema?.tables || [];
-  const tableNames = new Set(tables.map((table) => table.name?.toLowerCase()));
+  const tableNames = tables.map((table) => normalizeName(table.name));
 
   for (const table of tables) {
     for (const foreignKey of table.foreignKeys || []) {
-      const referencedTable = getForeignKeyTable(foreignKey.references);
+      const referencedTable = readReferencedTable(foreignKey.references);
 
-      if (referencedTable && !tableNames.has(referencedTable)) {
-        issues.push({
-          type: "invalid_foreign_key",
-          severity: "error",
-          fixTarget: "architectStep2",
-          message: `Table "${table.name}" references "${foreignKey.references}", but table "${referencedTable}" does not exist.`,
-        });
+      if (referencedTable && !tableNames.includes(referencedTable)) {
+        addIssue(issues, "invalid_foreign_key", "error", "architectStep2",
+          `Table "${table.name}" references "${foreignKey.references}", but table "${referencedTable}" does not exist.`);
       }
     }
   }
 }
 
-function checkApiTables(blueprint, issues) {
-  const endpoints = blueprint.apiEndpoints || [];
-  const tableNames = new Set((blueprint.dbSchema?.tables || []).map((table) => table.name?.toLowerCase()));
+function validateApiTables(blueprint, issues) {
+  const tables = blueprint.dbSchema?.tables || [];
+  const tableNames = tables.map((table) => normalizeName(table.name));
 
-  for (const endpoint of endpoints) {
+  for (const endpoint of blueprint.apiEndpoints || []) {
     if (!endpoint.relatedTable) continue;
 
     if (endpoint.relatedTable.includes(",")) {
-      issues.push({
-        type: "invalid_related_table",
-        severity: "error",
-        fixTarget: "architectStep3",
-        message: `API "${endpoint.method} ${endpoint.path}" must use one relatedTable, not "${endpoint.relatedTable}".`,
-      });
+      addIssue(issues, "invalid_related_table", "error", "architectStep3",
+        `API "${endpoint.method} ${endpoint.path}" should use one relatedTable, not "${endpoint.relatedTable}".`);
       continue;
     }
 
-    const relatedTable = endpoint.relatedTable.toLowerCase();
+    const relatedTable = normalizeName(endpoint.relatedTable);
 
-    if (!tableNames.has(relatedTable)) {
-      issues.push({
-        type: "orphan_endpoint",
-        severity: "error",
-        fixTarget: "architectStep3",
-        message: `API "${endpoint.method} ${endpoint.path}" references table "${relatedTable}", but that table does not exist.`,
-      });
+    if (!tableNames.includes(relatedTable)) {
+      addIssue(issues, "orphan_endpoint", "error", "architectStep3",
+        `API "${endpoint.method} ${endpoint.path}" references table "${endpoint.relatedTable}", but that table does not exist.`);
     }
   }
 }
 
-function checkFrontendApiCalls(blueprint, issues) {
+function validateFrontendApiCalls(blueprint, issues) {
+  const endpoints = blueprint.apiEndpoints || [];
 
-  const frontendPages = blueprint.frontendPages || [];
-  const apiEndpoints = blueprint.apiEndpoints || [];
-
-  for (const page of frontendPages) {
+  for (const page of blueprint.frontendPages || []) {
     for (const component of page.components || []) {
       for (const apiCall of component.apiCalls || []) {
-        if (!hasMatchingEndpoint(apiCall, apiEndpoints)) {
-          issues.push({
-            type: "missing_api",
-            severity: "warning",
-            fixTarget: "architectStep3",
-            message: `Page "${page.name}" component "${component.name}" calls "${apiCall}", but no matching API endpoint exists.`,
-          });
+        if (!apiCallMatchesEndpoint(apiCall, endpoints)) {
+          addIssue(issues, "missing_api", "warning", "architectStep3",
+            `Page "${page.name}" component "${component.name}" calls "${apiCall}", but no matching API endpoint exists.`);
         }
       }
     }
   }
 }
 
-function checkAuthConsistency(blueprint, issues) {
-  const frontendPages = blueprint.frontendPages || [];
+function validateAuthRules(blueprint, issues) {
   const protectedEndpoints = (blueprint.apiEndpoints || []).filter((endpoint) => endpoint.requiresAuth);
 
-  for (const page of frontendPages) {
+  for (const page of blueprint.frontendPages || []) {
     for (const component of page.components || []) {
       const callsProtectedApi = (component.apiCalls || []).some((apiCall) =>
-        hasMatchingEndpoint(apiCall, protectedEndpoints)
+        apiCallMatchesEndpoint(apiCall, protectedEndpoints)
       );
 
       if (callsProtectedApi && !page.requiresAuth) {
-        issues.push({
-          type: "auth_mismatch",
-          severity: "warning",
-          fixTarget: "architectStep4",
-          message: `Page "${page.name}" calls an auth-required API but page.requiresAuth is false.`,
-        });
+        addIssue(issues, "auth_mismatch", "warning", "architectStep4",
+          `Page "${page.name}" calls an auth-required API but page.requiresAuth is false.`);
       }
     }
   }
 }
 
-function checkOrphanTables(blueprint, issues) {
-  const tables = blueprint.dbSchema?.tables || [];
-  const entityTables = new Set((blueprint.entities || []).map((entity) => entity.tableName?.toLowerCase()).filter(Boolean));
-  const referencedTables = new Set(
-    (blueprint.apiEndpoints || [])
-      .map((endpoint) => endpoint.relatedTable?.toLowerCase())
-      .filter(Boolean)
-  );
+function validateUnusedTables(blueprint, issues) {
+  const entityTableNames = (blueprint.entities || [])
+    .map((entity) => normalizeName(entity.tableName))
+    .filter(Boolean);
 
-  for (const table of tables) {
-    const tableName = table.name?.toLowerCase();
+  const apiTableNames = (blueprint.apiEndpoints || [])
+    .map((endpoint) => normalizeName(endpoint.relatedTable))
+    .filter(Boolean);
 
-    if (!referencedTables.has(tableName) && !isJoinTable(table, entityTables)) {
-      issues.push({
-        type: "orphan_table",
-        severity: "warning",
-        fixTarget: "architectStep3",
-        message: `Table "${table.name}" exists but no API endpoint references it.`,
-      });
-    }
+  for (const table of blueprint.dbSchema?.tables || []) {
+    const tableName = normalizeName(table.name);
+
+    if (apiTableNames.includes(tableName)) continue;
+    if (isJoinTable(table, entityTableNames)) continue;
+
+    addIssue(issues, "orphan_table", "warning", "architectStep3",
+      `Table "${table.name}" exists but no API endpoint references it.`);
   }
 }
 
-function checkFolderStructure(blueprint, issues) {
+function validateProjectStructure(blueprint, issues) {
   const folderStructure = blueprint.folderStructure || "";
-  const requiredEntries = [
-    "backend/",
-    "frontend/",
-    "package.json",
-    ".env.example",
-    "server.js",
-    "app.js",
-    "config/",
-    "models/",
-    "routes/",
-    "controllers/",
-    "middleware/",
-    "utils/",
-    "index.html",
-    "vite.config.js",
-    "tailwind.config.js",
-    "postcss.config.js",
-    "main.jsx",
-    "App.jsx",
-    "pages/",
-    "components/",
-    "context/",
-    "hooks/",
-  ];
+  const requiredFiles = [...REQUIRED_BACKEND_FILES, ...REQUIRED_FRONTEND_FILES];
 
-  for (const entry of requiredEntries) {
-    if (!folderStructure.includes(entry)) {
-      issues.push({
-        type: "missing_folder_entry",
-        severity: "warning",
-        fixTarget: "architectStep5",
-        message: `Folder structure is missing "${entry}".`,
-      });
+  for (const filePath of requiredFiles) {
+    if (!folderStructure.includes(filePath)) {
+      addIssue(issues, "missing_folder_entry", "warning", "architectStep5",
+        `Folder structure is missing "${filePath}".`);
     }
   }
 }
 
-function checkDependencies(blueprint, issues) {
-  const dependencies = blueprint.dependencies || {};
-  const backendDeps = dependencies.backend?.dependencies || {};
-  const backendDevDeps = dependencies.backend?.devDependencies || {};
-  const frontendDeps = dependencies.frontend?.dependencies || {};
-  const frontendDevDeps = dependencies.frontend?.devDependencies || {};
+function validateDependencies(blueprint, issues) {
+  const backend = blueprint.dependencies?.backend || {};
+  const frontend = blueprint.dependencies?.frontend || {};
 
-  requirePackages(backendDeps, {
-    express: "^4.18.2",
-    cors: "^2.8.5",
-    dotenv: "^16.4.7",
-    bcryptjs: "^2.4.3",
-    jsonwebtoken: "^9.0.2",
-    uuid: "^9.0.0",
-  }, "backend dependency", "architectStep5", issues);
+  checkPackages(backend.dependencies || {}, REQUIRED_BACKEND_DEPENDENCIES, "backend dependency", issues);
+  checkPackages(backend.devDependencies || {}, [["nodemon", "^3.0.0"]], "backend devDependency", issues);
+  checkPackages(frontend.dependencies || {}, REQUIRED_FRONTEND_DEPENDENCIES, "frontend dependency", issues);
+  checkPackages(frontend.devDependencies || {}, REQUIRED_FRONTEND_DEV_DEPENDENCIES, "frontend devDependency", issues);
 
-  requirePackages(backendDevDeps, {
-    nodemon: "^3.0.0",
-  }, "backend devDependency", "architectStep5", issues);
+  const databaseType = normalizeName(blueprint.dbSchema?.databaseType);
 
-  requirePackages(frontendDeps, {
-    react: "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    axios: "^1.6.0",
-  }, "frontend dependency", "architectStep5", issues);
+  if (databaseType === "postgresql") {
+    checkPackages(backend.dependencies || {}, [["pg", "^8.11.0"]], "backend dependency", issues);
 
-  requirePackages(frontendDevDeps, {
-    vite: "^5.0.0",
-    "@vitejs/plugin-react": "^4.2.0",
-    tailwindcss: "^3.4.0",
-    postcss: "^8.4.0",
-    autoprefixer: "^10.4.0",
-  }, "frontend devDependency", "architectStep5", issues);
-
-  checkDatabasePackage(blueprint.dbSchema?.databaseType, backendDeps, issues);
-}
-
-function checkDatabasePackage(databaseType = "", backendDeps, issues) {
-  const normalizedType = databaseType.toLowerCase();
-
-  if (normalizedType === "postgresql") {
-    requirePackages(backendDeps, { pg: "^8.11.0" }, "backend dependency", "architectStep5", issues);
-
-    if (backendDeps.mongoose) {
-      issues.push({
-        type: "wrong_database_dependency",
-        severity: "warning",
-        fixTarget: "architectStep5",
-        message: "PostgreSQL projects should not include mongoose unless both databases are required.",
-      });
+    if (backend.dependencies?.mongoose) {
+      addIssue(issues, "wrong_database_dependency", "warning", "architectStep5",
+        "PostgreSQL projects should not include mongoose unless both databases are required.");
     }
   }
 
-  if (normalizedType === "mongodb") {
-    requirePackages(backendDeps, { mongoose: "^8.8.0" }, "backend dependency", "architectStep5", issues);
+  if (databaseType === "mongodb") {
+    checkPackages(backend.dependencies || {}, [["mongoose", "^8.8.0"]], "backend dependency", issues);
 
-    if (backendDeps.pg) {
-      issues.push({
-        type: "wrong_database_dependency",
-        severity: "warning",
-        fixTarget: "architectStep5",
-        message: "MongoDB projects should not include pg unless both databases are required.",
-      });
+    if (backend.dependencies?.pg) {
+      addIssue(issues, "wrong_database_dependency", "warning", "architectStep5",
+        "MongoDB projects should not include pg unless both databases are required.");
     }
   }
 }
 
-function requirePackages(actualPackages, expectedPackages, packageType, fixTarget, issues) {
-  for (const [name, version] of Object.entries(expectedPackages)) {
-    if (actualPackages[name] !== version) {
-      issues.push({
-        type: "missing_dependency",
-        severity: "warning",
-        fixTarget,
-        message: `Expected ${packageType} "${name}" at version "${version}".`,
-      });
+function checkPackages(actualPackages, requiredPackages, label, issues) {
+  for (const [packageName, expectedVersion] of requiredPackages) {
+    const actualVersion = actualPackages[packageName];
+
+    if (!actualVersion) {
+      addIssue(issues, "missing_dependency", "warning", "architectStep5",
+        `Missing ${label} "${packageName}".`);
+      continue;
+    }
+
+    const actualMajor = readMajorVersion(actualVersion);
+    const expectedMajor = readMajorVersion(expectedVersion);
+
+    if (actualMajor !== null && expectedMajor !== null && actualMajor !== expectedMajor) {
+      addIssue(issues, "dependency_major_mismatch", "warning", "architectStep5",
+        `Expected ${label} "${packageName}" to use major version ${expectedMajor}, but found "${actualVersion}".`);
     }
   }
 }
 
-function buildValidationResult(state, issues) {
+function runChecks(checks, blueprint, issues) {
+  for (const check of checks) {
+    check(blueprint, issues);
+  }
+}
+
+function hasErrors(issues) {
+  return issues.some((issue) => issue.severity === "error");
+}
+
+function readMajorVersion(version) {
+  const match = String(version).match(/\d+/);
+  return match ? Number(match[0]) : null;
+}
+
+function finishValidation(state, issues) {
   const currentCycles = state.blueprintValidation?.validationCycles || 0;
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
@@ -314,7 +317,6 @@ function buildValidationResult(state, issues) {
         issues: [],
         validationCycles: currentCycles + 1,
       },
-      currentPhase: "planner",
     };
   }
 
@@ -329,7 +331,6 @@ function buildValidationResult(state, issues) {
         issues,
         validationCycles: currentCycles + 1,
       },
-      currentPhase: "planner",
     };
   }
 
@@ -342,71 +343,83 @@ function buildValidationResult(state, issues) {
   };
 }
 
-function hasMatchingEndpoint(apiCall, endpoints) {
-  const call = parseApiCall(apiCall);
+function apiCallMatchesEndpoint(apiCall, endpoints) {
+  const call = splitApiCall(apiCall);
 
   return endpoints.some((endpoint) => {
-    const endpointPath = normalizeApiPath(endpoint.path);
-    const samePath = endpointPath === call.path;
-    const sameMethod = !call.method || endpoint.method?.toLowerCase() === call.method;
+    const endpointPath = cleanApiPath(endpoint.path);
+    const endpointMethod = normalizeName(endpoint.method);
 
-    return samePath && sameMethod;
+    return endpointPath === call.path && (!call.method || endpointMethod === call.method);
   });
 }
 
-function parseApiCall(apiCall = "") {
-  const value = String(apiCall).trim().toLowerCase();
-  const match = value.match(/^(get|post|put|patch|delete)\s+(.+)$/);
+function splitApiCall(apiCall = "") {
+  const parts = String(apiCall).trim().toLowerCase().split(" ").filter(Boolean);
+  const firstPart = parts[0] || "";
 
-  if (!match) {
+  if (HTTP_METHODS.includes(firstPart)) {
     return {
-      method: "",
-      path: normalizeApiPath(value),
+      method: firstPart,
+      path: cleanApiPath(parts.slice(1).join(" ")),
     };
   }
 
   return {
-    method: match[1],
-    path: normalizeApiPath(match[2]),
+    method: "",
+    path: cleanApiPath(parts.join(" ")),
   };
 }
 
-function normalizeApiPath(apiPath = "") {
+function cleanApiPath(apiPath = "") {
   return String(apiPath)
     .trim()
     .toLowerCase()
-    .replace(/\/:\w+/g, "/:param");
+    .split("/")
+    .map((part) => part.startsWith(":") ? ":param" : part)
+    .join("/");
 }
 
-function getForeignKeyTable(reference = "") {
-  const match = reference.match(/^(\w+)\(/);
-  return match?.[1]?.toLowerCase() || "";
-}
+function readReferencedTable(reference = "") {
+  const openingParenthesis = reference.indexOf("(");
 
-function isJoinTable(table, entityTables) {
-  const tableName = table.name?.toLowerCase() || "";
-  return !entityTables.has(tableName) && tableName.includes("_") && (table.foreignKeys || []).length >= 2;
-}
-
-function toSnakePlural(name = "") {
-  const snakeName = name
-    .replace(/([a-z])([A-Z])/g, "$1_$2")
-    .toLowerCase();
-
-  if (snakeName.endsWith("y")) {
-    return `${snakeName.slice(0, -1)}ies`;
+  if (openingParenthesis === -1) {
+    return "";
   }
 
-  return snakeName.endsWith("s") ? snakeName : `${snakeName}s`;
+  return normalizeName(reference.slice(0, openingParenthesis));
 }
 
-function mostCommonFixTarget(issues) {
+function isJoinTable(table, entityTableNames) {
+  const tableName = normalizeName(table.name);
+  const foreignKeys = table.foreignKeys || [];
+
+  return !entityTableNames.includes(tableName) && tableName.includes("_") && foreignKeys.length >= 2;
+}
+
+function addIssue(issues, type, severity, fixTarget, message) {
+  issues.push({ type, severity, fixTarget, message });
+}
+
+function normalizeName(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
+function findMostCommonFixTarget(issues) {
   const counts = {};
+  let bestTarget = "";
+  let bestCount = 0;
 
   for (const issue of issues) {
     if (!issue.fixTarget) continue;
+
     counts[issue.fixTarget] = (counts[issue.fixTarget] || 0) + 1;
+
+    if (counts[issue.fixTarget] > bestCount) {
+      bestTarget = issue.fixTarget;
+      bestCount = counts[issue.fixTarget];
+    }
   }
 
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  return bestTarget;
 }

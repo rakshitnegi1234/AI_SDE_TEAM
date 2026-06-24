@@ -11,7 +11,10 @@ import {
   blueprintValidatorNode,
   blueprintValidatorRouter,
 } from "../agents/blueprintValidator.js";
+import { plannerAgentNode } from "../agents/plannerAgent.js";
 import { humanInputNode } from "../nodes/humanInput.js";
+import { sandboxHealthCheckNode } from "../nodes/sandboxHealthCheck.js";
+import { setupSandboxNode } from "../nodes/setupSandbox.js";
 import { AgentState } from "./state.js";
 
 
@@ -43,9 +46,7 @@ export function buildPhase1Graph(options = {})
     if (state.pmStatus === "spec_ready") {
       return "architectStep1";
     }
-    
     return END;
-
   });
 
   // ARCHITECT AGENT 
@@ -72,19 +73,50 @@ export function buildPhase1Graph(options = {})
   const validatorNode = options.blueprintValidatorNode || blueprintValidatorNode;
   const validatorRouter = options.blueprintValidatorRouter || blueprintValidatorRouter;
 
-  graph.addNode("blueprintValidator", validatorNode);
-
   graph.addEdge("architectStep5", "blueprintValidator");
+  graph.addNode("blueprintValidator", validatorNode);
 
   graph.addConditionalEdges("blueprintValidator", (state) => {
     const route = validatorRouter(state);
-    return route === "__end__" ? END : route;
+
+    return route === "__end__" ? "plannerAgent" : route;
   });
 
 
+
+
+
+
+
+
+  // PLANNER + SANDBOX
+
+  const plannerNode = options.plannerAgentNode || plannerAgentNode;
+  const setupNode = options.setupSandboxNode || setupSandboxNode;
+  const healthNode = options.sandboxHealthCheckNode || sandboxHealthCheckNode;
+
+  graph.addNode("plannerAgent", plannerNode);
+  graph.addNode("setupSandbox", setupNode);
+  graph.addNode("sandboxHealthCheck", healthNode);
+
+  graph.addConditionalEdges("plannerAgent", (state) => {
+    return state.error ? END : "setupSandbox";
+  });
+
+  graph.addConditionalEdges("setupSandbox", (state) => {
+    return state.error ? END : "sandboxHealthCheck";
+  });
+
+  graph.addEdge("sandboxHealthCheck", END);
+
+
+
+
+
+
+
+
 //  LangGraph saves a checkpoint after a graph step finishes successfully.
-
-
   return graph.compile({ checkpointer });
 
 }

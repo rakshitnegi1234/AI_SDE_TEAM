@@ -55,15 +55,31 @@ async function main() {
   );
 
 
-  if (finalState.clarifiedSpec) {
-    console.log("\nFINAL SPEC:\n");
-    console.log(JSON.stringify(finalState.clarifiedSpec, null, 2));
-    return;
-  }
-
   if (finalState.error) {
     console.error(finalState.error);
     process.exit(1);
+  }
+
+  if (finalState.clarifiedSpec) {
+    console.log("\nFINAL SPEC:\n");
+    console.log(JSON.stringify(finalState.clarifiedSpec, null, 2));
+  }
+
+  if (finalState.taskQueue?.phases?.length) {
+    console.log("\nTASK PLAN:\n");
+    console.log(JSON.stringify(finalState.taskQueue, null, 2));
+  }
+
+  if (finalState.sandboxId) {
+    console.log("\nSANDBOX:\n");
+    console.log(JSON.stringify({
+      sandboxId: finalState.sandboxId,
+      healthy: finalState.sandboxHealthy,
+    }, null, 2));
+  }
+
+  if (finalState.clarifiedSpec || finalState.taskQueue?.phases?.length || finalState.sandboxId) {
+    return;
   }
 
   console.error("Graph completed without producing a clarified spec.");

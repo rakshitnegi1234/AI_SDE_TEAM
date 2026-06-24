@@ -28,8 +28,27 @@ STRICT NAMING CONVENTION (you MUST follow this):
   Example: "users(id)", "restaurants(id)"
 `;
 
-// STEP 1: Identify Entities & Relationships + Naming Map
 
+function addValidationFixContext(promptParts, state, stepName) {
+
+  const validationIssues = state.blueprintValidation?.issues || [];
+  const issuesForThisStep = validationIssues.filter((issue) => issue.fixTarget === stepName);
+
+  if (issuesForThisStep.length === 0) {
+    return;
+  }
+
+  // These issues come from the Blueprint Validator 
+ 
+  promptParts.push(
+
+    "BLUEPRINT VALIDATION ISSUES TO FIX FOR THIS STEP:",
+     JSON.stringify(issuesForThisStep, null, 2)
+  );
+}
+
+
+// STEP 1: Identify Entities & Relationships + Naming Map
 
 const STEP1_PROMPT = `You are the Architect Agent in an AI software development team.
 
@@ -42,6 +61,7 @@ From the user's clarified requirement, identify all core domain entities, their 
 ${NAMING_RULES}
 
 OUTPUT FORMAT:
+
 Return ONLY valid JSON. Do not include markdown, comments, or explanation.
 
 {
@@ -78,26 +98,27 @@ RULES:
 - If an entity has no relationships, use an empty array: [].
 - Do not invent unnecessary entities. Include only entities required by the clarified requirement.`;
 
-
 export async function architectStep1Node(state) 
 {
   console.log("\n[Architect Step 1/5] Identifying entities & naming map\n");
 
   const result = await safeCallGeminiWithRetry({
+
     systemPrompt: STEP1_PROMPT,
-    userPrompt: `Project Specification:\n${JSON.stringify(state.clarifiedSpec, null, 2)}`,
+    userPrompt: `Use this project specification as the source of truth:\n${JSON.stringify(state.clarifiedSpec, null, 2)}`,
     agentName: "architectStep1",
   });
 
 
   if (!result.ok) {
-    console.error(`Architect step 1 failed: ${result.error}`);
-    return { error:`Architect step 1 failed: ${result.error}` };
+    return { error: `Architect step 1 failed: ${result.error}` };
   }
 
-  const entities = result.parsed.entities || result.parsed;
-  console.log(`Found ${entities.length} entities:`);
-  entities.forEach(e => console.log(`   • ${e.name} → table: ${e.tableName}, api: ${e.apiPath}`));
+  const entities = result.parsed.entities;
+
+  if (!Array.isArray(entities)) {
+    return { error: "Architect step 1 failed: expected result.parsed.entities to be an array" };
+  }
 
   return {
     blueprint: { entities },
@@ -106,7 +127,6 @@ export async function architectStep1Node(state)
 
 
 // STEP 2: Design Database Schema
-
 
 const STEP2_PROMPT = `You are the Architect Agent designing the database schema.
 
@@ -153,23 +173,16 @@ export async function architectStep2Node(state)
     tableName: entity.tableName,
   }));
 
-  const validationIssues = state.blueprintValidation?.issues || [];
-
   const promptParts = [
     "Entity Naming Map (use these EXACT table names):",
     JSON.stringify(entityNames, null, 2),
     "Full Entities:",
     JSON.stringify(state.blueprint.entities, null, 2),
-    "Spec:",
+    "Use this project specification as the source of truth:",
     JSON.stringify(state.clarifiedSpec, null, 2),
   ];
 
-  if (validationIssues.length > 0) {
-    promptParts.push(
-      "PREVIOUS VALIDATION ISSUES TO FIX:",
-      JSON.stringify(validationIssues, null, 2)
-    );
-  }
+  addValidationFixContext(promptParts, state, "architectStep2");
 
   const result = await safeCallGeminiWithRetry({
     systemPrompt: STEP2_PROMPT,
@@ -179,7 +192,6 @@ export async function architectStep2Node(state)
 
 
   if (!result.ok) {
-    console.error(`Architect step 2 failed: ${result.error}`);
     return { error: `Architect step 2 failed: ${result.error}` };
   }
 
@@ -190,9 +202,7 @@ export async function architectStep2Node(state)
 
 
 
-
 // STEP 3: Design API Endpoints
-
 
 const STEP3_PROMPT = `You are the Architect Agent designing REST API endpoints.
 
@@ -227,6 +237,7 @@ RULES:
 
 export async function architectStep3Node(state)
 {
+
   console.log("\n[Architect Step 3/5] Designing API endpoints\n");
 
   const entityMap = (state.blueprint.entities || []).map((entity) => ({
@@ -235,23 +246,16 @@ export async function architectStep3Node(state)
     apiPath: entity.apiPath,
   }));
 
-  const validationIssues = state.blueprintValidation?.issues || [];
-
   const promptParts = [
     "Entity Naming Map:",
     JSON.stringify(entityMap, null, 2),
     "DB Schema:",
     JSON.stringify(state.blueprint.dbSchema, null, 2),
-    "Spec:",
+    "Use this project specification as the source of truth:",
     JSON.stringify(state.clarifiedSpec, null, 2),
   ];
 
-  if (validationIssues.length > 0) {
-    promptParts.push(
-      "PREVIOUS VALIDATION ISSUES TO FIX:",
-      JSON.stringify(validationIssues, null, 2)
-    );
-  }
+  addValidationFixContext(promptParts, state, "architectStep3");
 
   const result = await safeCallGeminiWithRetry({
     systemPrompt: STEP3_PROMPT,
@@ -261,24 +265,24 @@ export async function architectStep3Node(state)
 
 
   if (!result.ok) {
-    console.error(`Architect step 3 failed: ${result.error}`);
     return { error: `Architect step 3 failed: ${result.error}` };
   }
 
-  const endpoints = result.parsed.apiEndpoints || result.parsed;
-  const apiEndpoints = Array.isArray(endpoints) ? endpoints : [];
+  const apiEndpoints = result.parsed.apiEndpoints;
 
-  console.log(`Designed ${apiEndpoints.length} API endpoints`);
+  if (!Array.isArray(apiEndpoints)) {
+    return { error: "Architect step 3 failed: expected result.parsed.apiEndpoints to be an array" };
+  }
 
   return {
     blueprint: { apiEndpoints },
   };
+
 }
 
 
+
 // STEP 4: Design Frontend Pages
-
-
 const STEP4_PROMPT = `
 You are the Architect Agent responsible for designing the frontend page structure for a web application.
 
@@ -356,21 +360,14 @@ export async function architectStep4Node(state)
 {
   console.log("\n[Architect Step 4/5] Designing frontend pages\n");
 
-  const validationIssues = state.blueprintValidation?.issues || [];
-
   const promptParts = [
     "API Endpoints:",
     JSON.stringify(state.blueprint.apiEndpoints, null, 2),
-    "Spec:",
+    "Use this project specification as the source of truth:",
     JSON.stringify(state.clarifiedSpec, null, 2),
   ];
 
-  if (validationIssues.length > 0) {
-    promptParts.push(
-      "PREVIOUS VALIDATION ISSUES TO FIX:",
-      JSON.stringify(validationIssues, null, 2)
-    );
-  }
+  addValidationFixContext(promptParts, state, "architectStep4");
 
   const result = await safeCallGeminiWithRetry({
     systemPrompt: STEP4_PROMPT,
@@ -380,29 +377,30 @@ export async function architectStep4Node(state)
 
 
   if (!result.ok) {
-    console.error(`Architect step 4 failed: ${result.error}`);
     return { error: `Architect step 4 failed: ${result.error}` };
   }
 
-  const frontendPages = Array.isArray(result.parsed.frontendPages)
-    ? result.parsed.frontendPages
-    : Array.isArray(result.parsed)
-      ? result.parsed
-      : [];
+  const frontendPages = result.parsed.frontendPages;
 
-  console.log(`Designed ${frontendPages.length} pages`);
+  if (!Array.isArray(frontendPages)) {
+    return { error: "Architect step 4 failed: expected result.parsed.frontendPages to be an array" };
+  }
 
+ 
+ 
   return {
     blueprint: {
       frontendPages,
-      sharedComponents: result.parsed.sharedComponents || [],
-      routingNotes: result.parsed.routingNotes || [],
+      sharedComponents: result.parsed.sharedComponents,
+      routingNotes: result.parsed.routingNotes,
     },
   };
 }
 
-// STEP 5: Folder Structure + Dependencies
 
+
+
+// STEP 5: Folder Structure + Dependencies
 
 const STEP5_PROMPT = `
 You are the Architect Agent generating the complete project folder structure and package dependencies.
@@ -499,7 +497,8 @@ frontend/
     utils/
 
 DEPENDENCY RULES:
-- Use EXACT version numbers from the schema.
+- Always include the required package names.
+- Prefer the versions shown in the schema, but newer versions in the same major version are allowed.
 - Always include backend dependencies:
   - express
   - cors
@@ -537,19 +536,21 @@ PROJECT STRUCTURE RULES:
 - Do not generate actual file contents.
 - Only generate the folder tree and dependencies.
 `;
-
 export async function architectStep5Node(state)
 {
   console.log("\n[Architect Step 5/5] Generating folder structure and dependencies\n");
 
   const { dbSchema, apiEndpoints, frontendPages } = state.blueprint;
+
   const promptParts = [
     `DB: ${dbSchema?.databaseType} (${dbSchema?.tables?.length} tables)`,
     `APIs: ${apiEndpoints?.length} endpoints`,
     `Pages: ${frontendPages?.length} pages`,
-    "Spec:",
+    "Use this project specification as the source of truth:",
     JSON.stringify(state.clarifiedSpec, null, 2),
   ];
+
+  addValidationFixContext(promptParts, state, "architectStep5");
 
   const result = await safeCallGeminiWithRetry({
     systemPrompt: STEP5_PROMPT,
@@ -559,7 +560,6 @@ export async function architectStep5Node(state)
 
 
   if (!result.ok) {
-    console.error(`Architect step 5 failed: ${result.error}`);
     return { error: `Architect step 5 failed: ${result.error}` };
   }
 
@@ -567,9 +567,6 @@ export async function architectStep5Node(state)
   const backendDependencies = output.dependencies?.backend?.dependencies || {};
   const frontendDependencies = output.dependencies?.frontend?.dependencies || {};
 
-  console.log("Folder structure generated");
-  console.log(`Backend deps: ${Object.keys(backendDependencies).length}`);
-  console.log(`Frontend deps: ${Object.keys(frontendDependencies).length}`);
 
   return {
     blueprint: {

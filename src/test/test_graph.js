@@ -1,8 +1,9 @@
 /**
  * Phase 1 graph wiring test.
  *
- * Verifies the merged Phase 1 + Phase 2 flow:
- * START -> pmAgent -> humanInput -> pmAgent -> architect steps -> validator -> END
+ * Verifies the merged Phase 1 + Phase 2 + Phase 3 flow:
+ * START -> pmAgent -> humanInput -> pmAgent -> architect steps -> validator
+ * -> planner -> setupSandbox -> sandboxHealthCheck -> END
  */
 
 import { MemorySaver } from "@langchain/langgraph";
@@ -39,7 +40,6 @@ async function runTest() {
             role: "pm",
             questions: ["Who can use the app?"],
           }],
-          currentPhase: "pm",
         };
       }
 
@@ -55,7 +55,6 @@ async function runTest() {
           assumptions: [],
         },
         pmConversation: [{ role: "pm", spec: { appName: "test-app" } }],
-        currentPhase: "done",
       };
     },
     humanInputNode: () => {
@@ -124,10 +123,33 @@ async function runTest() {
           issues: [],
           validationCycles: 1,
         },
-        currentPhase: "planner",
       };
     },
     blueprintValidatorRouter: () => "__end__",
+    plannerAgentNode: () => {
+      nodeOrder.push("plannerAgent");
+      return {
+        taskQueue: {
+          phases: [{ phaseName: "setup", tasks: [{ taskId: "setup-1" }] }],
+          totalTasks: 1,
+        },
+        currentPhaseIndex: 0,
+        currentTaskIndex: 0,
+      };
+    },
+    setupSandboxNode: () => {
+      nodeOrder.push("setupSandbox");
+      return {
+        sandboxId: "sandbox-test",
+        fileRegistry: [{ path: "backend/src/index.js", exports: ["app"] }],
+      };
+    },
+    sandboxHealthCheckNode: () => {
+      nodeOrder.push("sandboxHealthCheck");
+      return {
+        sandboxHealthy: true,
+      };
+    },
   });
 
   const finalState = await graph.invoke(
@@ -145,6 +167,9 @@ async function runTest() {
     "architectStep4",
     "architectStep5",
     "blueprintValidator",
+    "plannerAgent",
+    "setupSandbox",
+    "sandboxHealthCheck",
   ];
 
   assert(
@@ -152,9 +177,11 @@ async function runTest() {
     `Node order is ${expectedOrder.join(" -> ")}`
   );
   assert(finalState.pmStatus === "spec_ready", "PM finished with spec_ready");
-  assert(finalState.currentPhase === "planner", "Current phase is planner");
   assert(finalState.clarifiedSpec?.appName === "test-app", "Clarified spec is stored");
   assert(finalState.blueprintValidation?.isValid === true, "Blueprint validation is stored");
+  assert(finalState.taskQueue?.totalTasks === 1, "Planner task queue is stored");
+  assert(finalState.sandboxId === "sandbox-test", "Sandbox ID is stored");
+  assert(finalState.sandboxHealthy === true, "Sandbox health is stored");
 
   printSummary();
 }

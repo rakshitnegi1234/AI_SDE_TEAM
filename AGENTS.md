@@ -97,7 +97,7 @@ This reduces architectural randomness and helps agents maintain consistent quali
 
 ### Phase E - Presentation, Feedback, And Deployment
 
-25. `presentToUser`: Start project in Docker, expose URL, and show feature, token, and cost summaries.
+25. `presentToUser`: Start project in Docker, expose URL, and show feature summaries.
 26. `feedbackCollector`: Classify feedback into bugs, changes, and new features. Calculate scope drift.
 27. `feedbackRouter`: Convert feedback into debug tasks, modification tasks, or new feature plans.
 28. `deployAgent`: Generate `vercel.json`, `render.yaml`, `Dockerfile`, `.env.example`, and deployment instructions.
@@ -105,7 +105,6 @@ This reduces architectural randomness and helps agents maintain consistent quali
 Additional implicit systems:
 
 - Checkpointing runs after every node and persists state.
-- Token tracking wraps every LLM call and records input tokens, output tokens, estimated cost, and budget warnings.
 
 ## Context Management
 
@@ -243,25 +242,6 @@ Critical prompt rules:
 - Debugger never guesses; it reads actual errors and actual files.
 - Deploy Agent uses free-tier deployment platforms only.
 
-## Token Tracking And Budget Control
-
-Wrap every LLM call with token tracking:
-
-- Record agent name.
-- Estimate input tokens.
-- Estimate output tokens.
-- Track timestamp.
-- Update total input and output tokens.
-- Estimate cost.
-- Warn at 80% budget usage.
-- Pause when budget is exceeded and ask whether to continue.
-- Show per-agent token usage in the final project summary.
-
-Default budget should be configurable, for example:
-
-- Small projects: `$2`
-- Larger projects: `$10`
-
 ## Checkpoint And State Persistence
 
 Use a LangGraph Redis checkpointer.
@@ -299,8 +279,6 @@ State groups:
 - Review/execution/debug state: `reviewResult`, `executionResult`, `debugState`
 - Feedback state: `userFeedback`, `feedbackIteration`, `scopeDrift`, `userSatisfied`
 - Deployment state: `deploymentConfig`
-- Cost state: `tokenUsage`, `tokenBudget`
-- Control state: `currentPhase`
 
 Do not store every full file forever in state. Full files live in Docker. State stores interfaces, summaries, task records, and metadata.
 
@@ -327,8 +305,7 @@ Implement incrementally in this order:
 17. Implement feedback loop with scope drift detection and iteration limits.
 18. Implement Deploy Agent.
 19. Add knowledge tools: check version, fetch docs, search web docs, fetch examples.
-20. Implement token tracking wrapper.
-21. Run testing and refinement.
+20. Run testing and refinement.
 
 ## Known Limitations
 

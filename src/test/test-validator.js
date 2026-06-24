@@ -13,7 +13,9 @@
  * 4. Catches pages calling non-existent APIs
  * 5. Catches auth mismatches
  * 6. Passes a clean blueprint with zero issues
- * 7. Force proceeds after max validation cycles
+ * 7. Allows compatible dependency version ranges
+ * 8. Warns on dependency major version mismatches
+ * 9. Force proceeds after max validation cycles
  */
 
 import {
@@ -39,9 +41,9 @@ async function test1() {
   const state = {
     blueprint: {
       entities: [
-        { name: "User", description: "A user" },
-        { name: "Task", description: "A task" },
-        { name: "Comment", description: "A comment" }, // No table for this!
+        { name: "User", tableName: "users", description: "A user" },
+        { name: "Task", tableName: "tasks", description: "A task" },
+        { name: "Comment", tableName: "comments", description: "A comment" }, // No table for this!
       ],
       dbSchema: {
         databaseType: "PostgreSQL",
@@ -135,8 +137,8 @@ async function test4() {
   const state = {
     blueprint: {
       entities: [
-        { name: "User", description: "A user" },
-        { name: "Task", description: "A task" },
+        { name: "User", tableName: "users", description: "A user" },
+        { name: "Task", tableName: "tasks", description: "A task" },
       ],
       dbSchema: {
         databaseType: "PostgreSQL",
@@ -238,14 +240,167 @@ frontend/
   );
 }
 
-// ─── TEST 5: Force proceed after max cycles ─────────────────
+// ─── TEST 5: Allows compatible dependency versions ───────────
 
 async function test5() {
-  console.log("\n  ─── Test 5: Force proceed after max cycles ───\n");
+  console.log("\n  ─── Test 5: Flexible dependency versions ───\n");
 
   const state = {
     blueprint: {
-      entities: [{ name: "Ghost", description: "No table" }],
+      entities: [
+        { name: "User", tableName: "users", description: "A user" },
+      ],
+      dbSchema: {
+        databaseType: "PostgreSQL",
+        tables: [
+          { name: "users", fields: [{ name: "id" }], foreignKeys: [] },
+        ],
+      },
+      apiEndpoints: [
+        { method: "GET", path: "/api/users", relatedTable: "users", requiresAuth: false },
+      ],
+      frontendPages: [
+        {
+          name: "Home",
+          route: "/",
+          requiresAuth: false,
+          components: [
+            { name: "UserList", description: "Shows users", apiCalls: ["GET /api/users"] },
+          ],
+        },
+      ],
+      folderStructure: `
+backend/
+  package.json
+  .env.example
+  server.js
+  app.js
+  config/
+  models/
+  routes/
+  controllers/
+  middleware/
+  utils/
+frontend/
+  package.json
+  index.html
+  vite.config.js
+  tailwind.config.js
+  postcss.config.js
+  main.jsx
+  App.jsx
+  pages/
+  components/
+  context/
+  hooks/
+  utils/
+`,
+      dependencies: {
+        backend: {
+          dependencies: {
+            express: "^4.19.2",
+            cors: "^2.8.7",
+            dotenv: "^16.5.0",
+            bcryptjs: "^2.4.4",
+            jsonwebtoken: "^9.1.0",
+            uuid: "^9.0.1",
+            pg: "^8.12.0",
+          },
+          devDependencies: {
+            nodemon: "^3.1.0",
+          },
+        },
+        frontend: {
+          dependencies: {
+            react: "^18.3.0",
+            "react-dom": "^18.3.0",
+            "react-router-dom": "^6.25.0",
+            axios: "^1.7.0",
+          },
+          devDependencies: {
+            vite: "^5.4.0",
+            "@vitejs/plugin-react": "^4.3.0",
+            tailwindcss: "^3.4.10",
+            postcss: "^8.4.40",
+            autoprefixer: "^10.4.20",
+          },
+        },
+      },
+    },
+    blueprintValidation: { isValid: false, issues: [], validationCycles: 0 },
+  };
+
+  const result = await blueprintValidatorNode(state);
+  assert(result.blueprintValidation.isValid === true, "Same-major dependency versions pass validation");
+  assert(
+    result.blueprintValidation.issues.length === 0,
+    `No dependency version warnings found (got ${result.blueprintValidation.issues.length})`
+  );
+}
+
+// ─── TEST 6: Warns on dependency major version mismatch ─────────
+
+async function test6() {
+  console.log("\n  ─── Test 6: Dependency major version mismatch ───\n");
+
+  const state = {
+    blueprint: {
+      entities: [],
+      dbSchema: { databaseType: "PostgreSQL", tables: [] },
+      apiEndpoints: [],
+      frontendPages: [],
+      folderStructure: "backend/\nfrontend/",
+      dependencies: {
+        backend: {
+          dependencies: {
+            express: "^5.0.0",
+            cors: "^2.8.5",
+            dotenv: "^16.4.7",
+            bcryptjs: "^2.4.3",
+            jsonwebtoken: "^9.0.2",
+            uuid: "^9.0.0",
+            pg: "^8.11.0",
+          },
+          devDependencies: {
+            nodemon: "^3.0.0",
+          },
+        },
+        frontend: {
+          dependencies: {
+            react: "^18.2.0",
+            "react-dom": "^18.2.0",
+            "react-router-dom": "^6.20.0",
+            axios: "^1.6.0",
+          },
+          devDependencies: {
+            vite: "^5.0.0",
+            "@vitejs/plugin-react": "^4.2.0",
+            tailwindcss: "^3.4.0",
+            postcss: "^8.4.0",
+            autoprefixer: "^10.4.0",
+          },
+        },
+      },
+    },
+    blueprintValidation: { isValid: false, issues: [], validationCycles: 0 },
+  };
+
+  const result = await blueprintValidatorNode(state);
+  const hasIssue = result.blueprintValidation.issues.some(i =>
+    i.type === "dependency_major_mismatch" && i.message.includes("express")
+  );
+
+  assert(hasIssue, "Detected dependency major version mismatch for express");
+}
+
+// ─── TEST 7: Force proceed after max cycles ─────────────────
+
+async function test7() {
+  console.log("\n  ─── Test 7: Force proceed after max cycles ───\n");
+
+  const state = {
+    blueprint: {
+      entities: [{ name: "Ghost", tableName: "ghosts", description: "No table" }],
       dbSchema: { databaseType: "PostgreSQL", tables: [] },
       apiEndpoints: [],
       frontendPages: [],
@@ -258,10 +413,10 @@ async function test5() {
   assert(result.blueprintValidation.validationCycles === 3, "Cycle count incremented");
 }
 
-// ─── TEST 6: Router returns correct targets ─────────────────
+// ─── TEST 8: Router returns correct targets ─────────────────
 
-async function test6() {
-  console.log("\n  ─── Test 6: Router returns correct targets ───\n");
+async function test8() {
+  console.log("\n  ─── Test 8: Router returns correct targets ───\n");
 
   const validState = {
     blueprintValidation: { isValid: true, issues: [] },
@@ -302,6 +457,8 @@ async function runAll() {
   await test4();
   await test5();
   await test6();
+  await test7();
+  await test8();
 
   console.log(`\n  ─── Summary: ${passed} passed, ${failed} failed ───\n`);
   if (failed > 0) process.exit(1);

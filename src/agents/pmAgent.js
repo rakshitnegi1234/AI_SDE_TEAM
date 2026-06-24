@@ -193,7 +193,6 @@ export async function pmAgentNode(state) {
     return {
       error: `pmAgent failed: ${result.error}`,
       pmStatus: "failed",
-      currentPhase: "error",
     };
   }
 
@@ -211,7 +210,6 @@ export async function pmAgentNode(state) {
         questions: response.questions || [],
         assumptions: response.assumptions || [],
       }],
-      currentPhase: "pm",
     };
   }
 
@@ -221,7 +219,6 @@ export async function pmAgentNode(state) {
     pmStatus: "spec_ready",
     clarifiedSpec: spec,
     pmConversation: [{ role: "pm", spec }],
-    currentPhase: "architecture",
   };
 }
 

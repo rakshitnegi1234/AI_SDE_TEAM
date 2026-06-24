@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.js",
+  
   "scripts": {
     "start": "node src/index.js",
     "test": "npm run test:graph && npm run test:pm",
@@ -10,7 +11,9 @@
     "test:pm": "node src/test/pm_agents.js",
     "test:pm:real": "GEMINI_RUN_REAL_TESTS=1 node src/test/pm_agents.js",
     "test:architect": "node src/test/test-architect.js",
-    "test:validator": "node src/test/test-validator.js"
+    "test:validator": "node src/test/test-validator.js",
+    "test:planner": "node src/test/test-planner.js",
+    "test:sandbox": "node src/test/test-sandbox.js"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.0",

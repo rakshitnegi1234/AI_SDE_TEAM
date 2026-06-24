@@ -59,7 +59,7 @@ export const AgentState = Annotation.Root({
   blueprint: Annotation({
 
     reducer: (prevBlueprint, newBlueprint) => {
-      
+
       if (!prevBlueprint) return newBlueprint;
 
       return {
@@ -81,17 +81,13 @@ export const AgentState = Annotation.Root({
   }),
 
 
+  //  BLUEPRINT VALIDATOR 
 
-
-
-  // ─── BLUEPRINT VALIDATOR ──────────────────────────────────
   blueprintValidation: Annotation({
-    reducer: (previousValidation, incomingValidation) =>
-      incomingValidation ?? {
-        isValid: false,
-        issues: [],
-        validationCycles: 0,
-      },
+
+    reducer: (prevValidation, newValidation) =>
+      newValidation ?? prevValidation,
+
     default: () => ({
       isValid: false,
       issues: [],
@@ -115,7 +111,8 @@ export const AgentState = Annotation.Root({
 
 
   
-  // ─── PLANNER AGENT ────────────────────────────────────────
+  //  PLANNER AGENT 
+
   taskQueue: Annotation({
     reducer: (previousTaskQueue, incomingTaskQueue) =>
       incomingTaskQueue ?? { phases: [] },
@@ -133,6 +130,25 @@ export const AgentState = Annotation.Root({
       incomingTaskIndex ?? 0,
     default: () => 0,
   }),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   // ─── FILE INTERFACE REGISTRY ──────────────────────────────
   // Grows after every task — needs accumulating reducer
@@ -272,7 +288,7 @@ export const AgentState = Annotation.Root({
     }),
   }),
 
-  // ─── USER FEEDBACK ────────────────────────────────────────
+  //  USER FEEDBACK 
   userFeedback: Annotation({
     reducer: (existingFeedback, incomingFeedback) => {
       if (!incomingFeedback) return existingFeedback;
@@ -310,7 +326,9 @@ export const AgentState = Annotation.Root({
     default: () => false,
   }),
 
-  // ─── DEPLOYMENT ───────────────────────────────────────────
+
+
+  //  DEPLOYMENT 
   deploymentConfig: Annotation({
     reducer: (previousDeploymentConfig, incomingDeploymentConfig) =>
       incomingDeploymentConfig ?? {
@@ -331,53 +349,7 @@ export const AgentState = Annotation.Root({
     default: () => 0,
   }),
 
-  // // ─── TOKEN TRACKING (V2 NEW) ──────────────────────────────
-  // tokenUsage: Annotation({
-  //   reducer: (existingUsage, incomingUsage) => {
-  //     if (!incomingUsage) return existingUsage;
-
-  //     return {
-  //       calls: [
-  //         ...(existingUsage.calls || []),
-  //         ...(incomingUsage.newCalls || []),
-  //       ],
-  //       totalInput:
-  //         existingUsage.totalInput + (incomingUsage.addedInput || 0),
-  //       totalOutput:
-  //         existingUsage.totalOutput + (incomingUsage.addedOutput || 0),
-  //       estimatedCost:
-  //         existingUsage.estimatedCost + (incomingUsage.addedCost || 0),
-  //     };
-  //   },
-  //   default: () => ({
-  //     calls: [],
-  //     totalInput: 0,
-  //     totalOutput: 0,
-  //     estimatedCost: 0.0,
-  //   }),
-  // }),
-
-  // tokenBudget: Annotation({
-  //   reducer: (previousTokenBudget, incomingTokenBudget) =>
-  //     incomingTokenBudget ?? 2.0,
-  //   default: () => 2.0,
-  // }),
-
-
-
-
-
-
-
-  currentPhase: Annotation(
-  {
-      reducer: (prevphase, newphase) =>
-      newphase ?? prevphase,
-
-      default: () => "pm", 
-  }),
-
-
+  
   error: Annotation({
     reducer: (preverror, newerror) =>
       newerror ?? preverror,
