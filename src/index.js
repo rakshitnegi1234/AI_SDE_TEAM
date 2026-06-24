@@ -8,7 +8,17 @@ export { buildGraph, buildPhase1Graph } from "./config/graph.js";
 export { AgentState } from "./config/state.js";
 export { coderAgentNode } from "./agents/coderAgent.js";
 export { contextBuilderNode } from "./nodes/contextBuilder.js";
+export { debuggerAgentNode, debuggerRouter } from "./agents/debuggerAgent.js";
+export {
+  deploymentVerifierNode,
+  deploymentVerifierRouter,
+} from "./nodes/deploymentVerifier.js";
+export { executorAgentNode, executorRouter } from "./agents/executorAgent.js";
+export { reviewerAgentNode, reviewerRouter } from "./agents/reviewerAgent.js";
+export { humanEscalationNode, humanEscalationRouter } from "./nodes/humanEscalation.js";
+export { presentToUserNode } from "./nodes/presentToUser.js";
 export { selectNextTaskNode, selectNextTaskRouter } from "./nodes/selectNextTask.js";
+export { simplifyTaskNode } from "./nodes/simplifyTask.js";
 export { snapshotManagerNode } from "./nodes/snapshotManager.js";
 export { updateRegistryNode } from "./nodes/updateRegistry.js";
 dotenv.config({ path: new URL("../.env", import.meta.url) });
@@ -59,7 +69,7 @@ async function main() {
         thread_id: `phase1-${Date.now()}`,
       },
 
-      recursionLimit: 100,
+      recursionLimit: Number.parseInt(process.env.GRAPH_RECURSION_LIMIT || "500", 10),
     }
   );
 

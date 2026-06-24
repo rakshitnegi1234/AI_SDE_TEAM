@@ -1,56 +1,30 @@
-import { getFileList, readFile } from "../utils/sandboxManager.js";
-
-function extractBasicInterface(content, filePath) {
-  const exports = [];
-  const lines = content.split("\n");
-
-  for (const line of lines) {
-    const namedMatch = line.match(/export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)/);
-    if (namedMatch) exports.push(namedMatch[1]);
-
-    const defaultMatch = line.match(/export\s+default\s+(?:function\s+)?(\w+)?/);
-    if (defaultMatch?.[1]) exports.push(`default:${defaultMatch[1]}`);
-  }
-
-  const namedExports = exports.filter((entry) => !entry.startsWith("default:"));
-  const defaultEntry = exports.find((entry) => entry.startsWith("default:"));
-  const defaultName = defaultEntry ? defaultEntry.split(":")[1] : null;
-
-  let importStatement = "";
-  if (defaultName && namedExports.length > 0) {
-    importStatement = `import ${defaultName}, { ${namedExports.join(", ")} } from '${filePath}'`;
-  } else if (defaultName) {
-    importStatement = `import ${defaultName} from '${filePath}'`;
-  } else if (namedExports.length > 0) {
-    importStatement = `import { ${namedExports.join(", ")} } from '${filePath}'`;
-  }
-
-  return {
-    path: filePath,
-    exports: [...namedExports, ...(defaultName ? [defaultName] : [])],
-    importStatement,
-    interface: exports.join(", ") || "unknown exports",
-  };
-}
+import { readFile } from "../utils/sandboxManager.js";
 
 export function contextBuilderNode(state) {
-  console.log("\n[Context Builder] Assembling context for Coder...\n");
+  console.log("\n[Context Builder] Building context for Coder...\n");
 
   const {
     blueprint,
     clarifiedSpec,
     currentTask,
     fileRegistry = [],
-    projectPatterns,
+    projectPatterns = {},
     sandboxId,
   } = state;
 
   if (!currentTask) {
-    console.log("   No current task");
+    console.log("No current task found.");
     return { contextPackage: null };
   }
 
   const filesToCreate = currentTask.filesToCreate || [];
+  const filesNeeded = currentTask.filesNeeded || [];
+  const dependencyPaths = discoverDependencyPaths({
+    filesNeeded,
+    filesToCreate,
+    fileRegistry,
+  });
+
   const context = {
     task: {
       taskId: currentTask.taskId,
@@ -59,185 +33,223 @@ export function contextBuilderNode(state) {
       filesToCreate,
       acceptanceCriteria: currentTask.acceptanceCriteria || [],
     },
-    patterns: projectPatterns || {},
-    dependencyInterfaces: {},
-    dbSchema: null,
-    apiEndpoints: null,
-    templateFile: null,
-    namingMap: null,
+
     appName: clarifiedSpec?.appName || "app",
     authRequired: clarifiedSpec?.authRequired || false,
+
+    patterns: projectPatterns,
+    dependencies: blueprint?.dependencies || {},
+    namingMap: buildNamingMap(blueprint?.entities),
+
+    dependencyInterfaces: buildDependencyInterfaces({
+      filesNeeded: dependencyPaths,
+      filesToCreate,
+      fileRegistry,
+      sandboxId,
+    }),
+
+    dbSchema: isBackendTask(filesToCreate)
+      ? blueprint?.dbSchema || null
+      : null,
+
+    apiEndpoints: isFrontendTask(filesToCreate)
+      ? blueprint?.apiEndpoints || null
+      : null,
   };
 
-  const autoNeeded = new Set(currentTask.filesNeeded || []);
-  const isBackendRoute = filesToCreate.some((filePath) =>
-    filePath.includes("routes") || filePath.includes("controllers")
-  );
-  const isFrontendFile = filesToCreate.some((filePath) =>
-    filePath.includes("pages") || filePath.includes("components")
-  );
-  const isIntegration = filesToCreate.some((filePath) =>
-    filePath.endsWith("index.js") || filePath.endsWith("App.jsx") || filePath.endsWith("server.js")
-  );
+  printSummary(context, filesToCreate);
 
-  if (isBackendRoute) {
-    for (const entry of fileRegistry) {
-      if (
-        entry.path?.includes("models/") ||
-        entry.path?.includes("middleware/") ||
-        entry.path?.includes("config/")
-      ) {
-        autoNeeded.add(entry.path);
-      }
-    }
-  }
+  return {
+    contextPackage: context,
+  };
+}
 
-  if (isFrontendFile) {
-    for (const entry of fileRegistry) {
-      if (
-        entry.path?.includes("utils/api") ||
-        entry.path?.includes("context/") ||
-        entry.path?.includes("hooks/")
-      ) {
-        autoNeeded.add(entry.path);
-      }
-    }
-  }
+function buildNamingMap(entities = []) {
+  return entities.map((entity) => ({
+    entity: entity.name,
+    tableName: entity.tableName,
+    apiPath: entity.apiPath,
+    modelFile: entity.modelFile,
+    routeFile: entity.routeFile,
+  }));
+}
 
-  if (isIntegration) {
-    const isBackend = filesToCreate.some((filePath) => filePath.includes("backend"));
-    const isFrontend = filesToCreate.some((filePath) => filePath.includes("frontend"));
-    for (const entry of fileRegistry) {
-      if (isBackend && entry.path?.startsWith("backend/")) autoNeeded.add(entry.path);
-      if (isFrontend && entry.path?.startsWith("frontend/")) autoNeeded.add(entry.path);
-    }
-  }
+function discoverDependencyPaths({
+  filesNeeded,
+  filesToCreate,
+  fileRegistry,
+}) {
+  const dependencyPaths = new Set(filesNeeded);
 
-  for (const filePath of autoNeeded) {
-    if (filesToCreate.includes(filePath)) continue;
-
-    let entry = fileRegistry.find((registeredFile) => registeredFile.path === filePath);
-
-    if (!entry) {
-      const dir = filePath.split("/").slice(0, -1).join("/");
-      const name = filePath.split("/").pop().toLowerCase().replace(/\.(js|jsx)$/, "");
-      entry = fileRegistry.find((registeredFile) => {
-        if (!registeredFile.path) return false;
-        const registeredDir = registeredFile.path.split("/").slice(0, -1).join("/");
-        const registeredName = registeredFile.path.split("/").pop().toLowerCase().replace(/\.(js|jsx)$/, "");
-        return registeredDir === dir && (registeredName.includes(name) || name.includes(registeredName));
-      });
-      if (entry) console.log(`   Fuzzy match: ${filePath} -> ${entry.path}`);
-    }
-
-    if (!entry && sandboxId) {
-      try {
-        let content = readFile(sandboxId, filePath);
-
-        if (!content) {
-          const allFiles = getFileList(sandboxId);
-          const dir = filePath.split("/").slice(0, -1).join("/");
-          const baseName = filePath.split("/").pop().toLowerCase().replace(/\.(js|jsx)$/, "");
-          const match = allFiles.find((candidate) => {
-            const candidateDir = candidate.split("/").slice(0, -1).join("/");
-            const candidateName = candidate.split("/").pop().toLowerCase().replace(/\.(js|jsx)$/, "");
-            return candidateDir === dir && (candidateName.includes(baseName) || baseName.includes(candidateName));
-          });
-          if (match) content = readFile(sandboxId, match);
-        }
-
-        if (content) {
-          entry = extractBasicInterface(content, filePath);
-          console.log(`   Disk read: ${filePath} -> ${entry.exports.length} exports`);
-        }
-      } catch {
-        // The file is optional context; missing files should not stop the loop.
-      }
-    }
-
-    if (entry) {
-      context.dependencyInterfaces[entry.path || filePath] = {
-        importStatement: entry.importStatement,
-        exports: entry.exports,
-        interface: entry.interface,
-      };
-    }
-  }
-
-  if (blueprint?.entities) {
-    context.namingMap = blueprint.entities.map((entity) => ({
-      entity: entity.name,
-      tableName: entity.tableName,
-      apiPath: entity.apiPath,
-      modelFile: entity.modelFile,
-      routeFile: entity.routeFile,
-    }));
-  }
-
-  const isBackendTask = filesToCreate.some((filePath) => filePath.includes("backend"));
-  if (isBackendTask && blueprint?.dbSchema) {
-    const taskText = `${currentTask.title} ${currentTask.description}`.toLowerCase();
-    const relevantTables = blueprint.dbSchema.tables?.filter((table) => {
-      const tableName = table.name.toLowerCase();
-      const singularName = tableName.replace(/_/g, "").replace(/s$/, "");
-      return (
-        taskText.includes(tableName) ||
-        taskText.includes(singularName) ||
-        taskText.includes(tableName.replace(/_/g, " "))
-      );
-    });
-    context.dbSchema = {
-      databaseType: blueprint.dbSchema.databaseType,
-      tables: relevantTables?.length > 0 ? relevantTables : blueprint.dbSchema.tables,
-    };
-  }
-
-  const isFrontendTask = filesToCreate.some((filePath) => filePath.includes("frontend"));
-  if (isFrontendTask && blueprint?.apiEndpoints) {
-    const taskText = `${currentTask.title} ${currentTask.description}`.toLowerCase();
-    const relevantEndpoints = blueprint.apiEndpoints.filter((endpoint) => {
-      const pathParts = endpoint.path?.toLowerCase().split("/") || [];
-      return pathParts.some((part) => part.length > 2 && taskText.includes(part));
-    });
-    const authEndpoints = blueprint.apiEndpoints.filter((endpoint) => endpoint.path?.includes("/auth"));
-    const combined = [...new Set([...authEndpoints, ...relevantEndpoints])];
-    context.apiEndpoints = combined.length > 0 ? combined : blueprint.apiEndpoints;
-  }
-
-  const targetFile = filesToCreate[0] || "";
-  const templateType = targetFile.includes("models")
-    ? "models"
-    : targetFile.includes("routes") || targetFile.includes("controllers")
-      ? "routes"
-      : targetFile.includes("pages")
-        ? "pages"
-        : targetFile.includes("components")
-          ? "components"
-          : "";
-
-  if (templateType && sandboxId) {
-    const templateEntry = fileRegistry.find((entry) =>
-      entry.path?.includes(templateType) && !filesToCreate.includes(entry.path)
+  if (isBackendRouteTask(filesToCreate)) {
+    addRegistryPaths(dependencyPaths, fileRegistry, (path) =>
+      path.includes("models/") ||
+      path.includes("middleware/") ||
+      path.includes("config/")
     );
-    if (templateEntry) {
-      try {
-        const content = readFile(sandboxId, templateEntry.path);
-        if (content) {
-          context.templateFile = {
-            path: templateEntry.path,
-            content: content.slice(0, 3000),
-          };
-        }
-      } catch {
-        // Template context is optional.
-      }
+  }
+
+  if (isFrontendViewTask(filesToCreate)) {
+    addRegistryPaths(dependencyPaths, fileRegistry, (path) =>
+      path.includes("utils/api") ||
+      path.includes("context/") ||
+      path.includes("hooks/")
+    );
+  }
+
+  if (isIntegrationTask(filesToCreate)) {
+    const needsBackendFiles = filesToCreate.some((path) => path.startsWith("backend/"));
+    const needsFrontendFiles = filesToCreate.some((path) => path.startsWith("frontend/"));
+
+    addRegistryPaths(dependencyPaths, fileRegistry, (path) =>
+      (needsBackendFiles && path.startsWith("backend/")) ||
+      (needsFrontendFiles && path.startsWith("frontend/"))
+    );
+  }
+
+  return Array.from(dependencyPaths);
+}
+
+function addRegistryPaths(dependencyPaths, fileRegistry, shouldInclude) {
+  for (const entry of fileRegistry) {
+    if (entry?.path && shouldInclude(entry.path)) {
+      dependencyPaths.add(entry.path);
+    }
+  }
+}
+
+function buildDependencyInterfaces({
+  filesNeeded,
+  filesToCreate,
+  fileRegistry,
+  sandboxId,
+}) {
+  const interfaces = {};
+
+  for (const filePath of filesNeeded) {
+    if (filesToCreate.includes(filePath)) {
+      continue;
+    }
+
+    const registryEntry = fileRegistry.find((entry) => entry.path === filePath);
+
+    if (registryEntry) {
+      interfaces[filePath] = {
+        importStatement: registryEntry.importStatement,
+        exports: registryEntry.exports,
+        interface: registryEntry.interface,
+      };
+
+      continue;
+    }
+
+    const diskEntry = readBasicInterfaceFromDisk(sandboxId, filePath);
+
+    if (diskEntry) {
+      interfaces[filePath] = diskEntry;
     }
   }
 
-  const estimatedTokens = Math.ceil(JSON.stringify(context).length / 4);
-  console.log(`   Context size estimate: ${estimatedTokens} tokens`);
-  console.log(`   Files to create: ${filesToCreate.join(", ")}`);
-  console.log(`   Dependencies: ${Object.keys(context.dependencyInterfaces).length} interfaces`);
+  return interfaces;
+}
 
-  return { contextPackage: context };
+function readBasicInterfaceFromDisk(sandboxId, filePath) {
+  if (!sandboxId) {
+    return null;
+  }
+
+  try {
+    const content = readFile(sandboxId, filePath);
+
+    if (!content) {
+      return null;
+    }
+
+    return extractBasicInterface(content, filePath);
+  } catch {
+    return null;
+  }
+}
+
+function extractBasicInterface(content, filePath) {
+  const namedExports = [];
+  let defaultExport = null;
+
+  for (const line of content.split("\n")) {
+    const namedMatch = line.match(
+      /export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)/
+    );
+
+    if (namedMatch) {
+      namedExports.push(namedMatch[1]);
+    }
+
+    const defaultMatch = line.match(
+      /export\s+default\s+(?:function\s+)?(\w+)?/
+    );
+
+    if (defaultMatch?.[1]) {
+      defaultExport = defaultMatch[1];
+    }
+  }
+
+  return {
+    importStatement: buildImportStatement(filePath, namedExports, defaultExport),
+    exports: [...namedExports, ...(defaultExport ? [defaultExport] : [])],
+    interface:
+      [...namedExports, ...(defaultExport ? [`default:${defaultExport}`] : [])]
+        .join(", ") || "unknown exports",
+  };
+}
+
+function buildImportStatement(filePath, namedExports, defaultExport) {
+  if (defaultExport && namedExports.length > 0) {
+    return `import ${defaultExport}, { ${namedExports.join(", ")} } from '${filePath}'`;
+  }
+
+  if (defaultExport) {
+    return `import ${defaultExport} from '${filePath}'`;
+  }
+
+  if (namedExports.length > 0) {
+    return `import { ${namedExports.join(", ")} } from '${filePath}'`;
+  }
+
+  return "";
+}
+
+function isBackendTask(filesToCreate) {
+  return filesToCreate.some((filePath) => filePath.includes("backend"));
+}
+
+function isFrontendTask(filesToCreate) {
+  return filesToCreate.some((filePath) => filePath.includes("frontend"));
+}
+
+function isBackendRouteTask(filesToCreate) {
+  return filesToCreate.some((filePath) =>
+    filePath.includes("routes/") || filePath.includes("controllers/")
+  );
+}
+
+function isFrontendViewTask(filesToCreate) {
+  return filesToCreate.some((filePath) =>
+    filePath.includes("pages/") || filePath.includes("components/")
+  );
+}
+
+function isIntegrationTask(filesToCreate) {
+  return filesToCreate.some((filePath) =>
+    filePath.endsWith("index.js") ||
+    filePath.endsWith("App.jsx") ||
+    filePath.endsWith("server.js")
+  );
+}
+
+function printSummary(context, filesToCreate) {
+  const dependencyCount = Object.keys(context.dependencyInterfaces).length;
+
+  console.log(`Context size: ${JSON.stringify(context).length} characters`);
+  console.log(`Files to create: ${filesToCreate.join(", ") || "none"}`);
+  console.log(`Dependency interfaces: ${dependencyCount}`);
 }

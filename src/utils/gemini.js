@@ -1,7 +1,10 @@
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+const REQUEST_BATCH_SIZE = 5;
+const REQUEST_BATCH_SLEEP_MS = 30_000;
 
 let apiKey = null;
+let geminiRequestCount = 0;
 
 export function initGemini(key) {
   if (!key) {
@@ -66,6 +69,8 @@ export async function callGemini({
 }) {
   if (!apiKey) throw new Error("Gemini client is not initialized.");
 
+  await waitForGeminiRateLimitWindow(agentName);
+
   const modelName = model || process.env.GEMINI_MODEL || DEFAULT_MODEL;
   const fullPrompt = `${userPrompt}
 
@@ -126,6 +131,20 @@ Return only valid JSON. No markdown.`;
   }
 }
 
+async function waitForGeminiRateLimitWindow(agentName) {
+  geminiRequestCount += 1;
+
+  if (geminiRequestCount === 1 || (geminiRequestCount - 1) % REQUEST_BATCH_SIZE !== 0) {
+    return;
+  }
+
+  console.log(
+    `[${agentName}] Gemini request ${geminiRequestCount}: waiting ${REQUEST_BATCH_SLEEP_MS / 1000}s after ${REQUEST_BATCH_SIZE} requests to avoid quota bursts.`
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, REQUEST_BATCH_SLEEP_MS));
+}
+
 function extractGeminiText(data) {
   return data?.candidates
     ?.flatMap((candidate) => candidate.content?.parts || [])
@@ -161,6 +180,81 @@ function parseJson(raw, agentName) {
   try {
     return JSON.parse(text);
   } catch (error) {
+    const balancedJson = extractFirstBalancedJson(text);
+    if (balancedJson) {
+      try {
+        return JSON.parse(balancedJson);
+      } catch {}
+    }
+
     throw new Error(`${agentName} returned invalid JSON: ${error.message}`);
   }
+}
+
+function extractFirstBalancedJson(text) {
+  const start = findFirstJsonStart(text);
+  if (start === -1) {
+    return "";
+  }
+
+  const opening = text[start];
+  const closing = opening === "{" ? "}" : "]";
+  const stack = [closing];
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      stack.push(char === "{" ? "}" : "]");
+      continue;
+    }
+
+    if (char === "}" || char === "]") {
+      if (stack.pop() !== char) {
+        return "";
+      }
+
+      if (stack.length === 0) {
+        return text.slice(start, index + 1);
+      }
+    }
+  }
+
+  return "";
+}
+
+function findFirstJsonStart(text) {
+  const objectStart = text.indexOf("{");
+  const arrayStart = text.indexOf("[");
+
+  if (objectStart === -1) {
+    return arrayStart;
+  }
+
+  if (arrayStart === -1) {
+    return objectStart;
+  }
+
+  return Math.min(objectStart, arrayStart);
 }

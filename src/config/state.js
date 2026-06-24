@@ -131,6 +131,23 @@ export const AgentState = Annotation.Root({
   }),
 
 
+  // Track status of each task:
+  // { "setup-1": "done", "setup-2": "in_progress", ... }
+  
+  taskStatuses: Annotation({
+    reducer: (existStatus, newStatus) => {
+      if (!newStatus) return existStatus;
+
+      return {
+        ...existStatus,
+        ...newStatus,
+      };
+    },
+    
+    default: () => ({}),
+  }),
+
+
 
 
   //  FILE INTERFACE REGISTRY 
@@ -157,13 +174,11 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
 
+  
 
 
 
-
-
-
-  // ─── PROJECT PATTERNS (V2 NEW) ───────────────────────────
+  // PROJECT PATTERNS (V2 NEW) 
   projectPatterns: Annotation({
     reducer: (existingPatterns, incomingPatterns) => {
       if (!incomingPatterns) return existingPatterns;
@@ -198,19 +213,7 @@ export const AgentState = Annotation.Root({
     default: () => null,
   }),
 
-  // Track status of each task:
-  // { "setup-1": "done", "setup-2": "in_progress", ... }
-  taskStatuses: Annotation({
-    reducer: (existingStatuses, incomingStatuses) => {
-      if (!incomingStatuses) return existingStatuses;
 
-      return {
-        ...existingStatuses,
-        ...incomingStatuses,
-      };
-    },
-    default: () => ({}),
-  }),
 
   // Context package built for the coder
   contextPackage: Annotation({
@@ -272,9 +275,6 @@ export const AgentState = Annotation.Root({
       rollbackAttempted: false,
     }),
   }),
-
-
-
 
   //  USER FEEDBACK 
   userFeedback: Annotation({
