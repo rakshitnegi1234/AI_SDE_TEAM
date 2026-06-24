@@ -120,7 +120,7 @@ export const AgentState = Annotation.Root({
     // SANDBOX 
   sandboxId: Annotation({
     reducer: (prevSandId, newSandId) =>
-      newSandId ?? newSandId,
+      newSandId ?? prevSandId,
     default: () => "",
   }),
 
@@ -186,9 +186,15 @@ export const AgentState = Annotation.Root({
 
 
   // ─── DEV LOOP (Phase 4) ──────────────────────────────────
+  currentPhase: Annotation({
+    reducer: (previousPhase, incomingPhase) =>
+      incomingPhase ?? previousPhase,
+    default: () => "phase1",
+  }),
+
   currentTask: Annotation({
     reducer: (previousTask, incomingTask) =>
-      incomingTask ?? null,
+      incomingTask === undefined ? previousTask : incomingTask,
     default: () => null,
   }),
 
@@ -209,14 +215,14 @@ export const AgentState = Annotation.Root({
   // Context package built for the coder
   contextPackage: Annotation({
     reducer: (previousContextPackage, incomingContextPackage) =>
-      incomingContextPackage ?? null,
+      incomingContextPackage === undefined ? previousContextPackage : incomingContextPackage,
     default: () => null,
   }),
 
   // Latest coder output
   coderOutput: Annotation({
     reducer: (previousCoderOutput, incomingCoderOutput) =>
-      incomingCoderOutput ?? null,
+      incomingCoderOutput === undefined ? previousCoderOutput : incomingCoderOutput,
     default: () => null,
   }),
 

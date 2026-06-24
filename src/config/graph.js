@@ -11,10 +11,15 @@ import {
   blueprintValidatorNode,
   blueprintValidatorRouter,
 } from "../agents/blueprintValidator.js";
+import { coderAgentNode } from "../agents/coderAgent.js";
 import { plannerAgentNode } from "../agents/plannerAgent.js";
+import { contextBuilderNode } from "../nodes/contextBuilder.js";
 import { humanInputNode } from "../nodes/humanInput.js";
 import { sandboxHealthCheckNode } from "../nodes/sandboxHealthCheck.js";
+import { selectNextTaskNode, selectNextTaskRouter } from "../nodes/selectNextTask.js";
 import { setupSandboxNode } from "../nodes/setupSandbox.js";
+import { snapshotManagerNode } from "../nodes/snapshotManager.js";
+import { updateRegistryNode } from "../nodes/updateRegistry.js";
 import { AgentState } from "./state.js";
 
 
@@ -94,10 +99,20 @@ export function buildPhase1Graph(options = {})
   const plannerNode = options.plannerAgentNode || plannerAgentNode;
   const setupNode = options.setupSandboxNode || setupSandboxNode;
   const healthNode = options.sandboxHealthCheckNode || sandboxHealthCheckNode;
+  const selectTaskNode = options.selectNextTaskNode || selectNextTaskNode;
+  const contextNode = options.contextBuilderNode || contextBuilderNode;
+  const coderNode = options.coderAgentNode || coderAgentNode;
+  const registryNode = options.updateRegistryNode || updateRegistryNode;
+  const snapshotNode = options.snapshotManagerNode || snapshotManagerNode;
 
   graph.addNode("plannerAgent", plannerNode);
   graph.addNode("setupSandbox", setupNode);
   graph.addNode("sandboxHealthCheck", healthNode);
+  graph.addNode("selectNextTask", selectTaskNode);
+  graph.addNode("contextBuilder", contextNode);
+  graph.addNode("coderAgent", coderNode);
+  graph.addNode("updateRegistry", registryNode);
+  graph.addNode("snapshotManager", snapshotNode);
 
   graph.addConditionalEdges("plannerAgent", (state) => {
     return state.error ? END : "setupSandbox";
@@ -107,7 +122,21 @@ export function buildPhase1Graph(options = {})
     return state.error ? END : "sandboxHealthCheck";
   });
 
-  graph.addEdge("sandboxHealthCheck", END);
+  graph.addConditionalEdges("sandboxHealthCheck", (state) => {
+    if (state.error || !state.sandboxHealthy) return END;
+    return "selectNextTask";
+  });
+
+  // PHASE 4 MINIMAL DEV LOOP
+
+  graph.addConditionalEdges("selectNextTask", selectNextTaskRouter, {
+    contextBuilder: "contextBuilder",
+    __end__: END,
+  });
+  graph.addEdge("contextBuilder", "coderAgent");
+  graph.addEdge("coderAgent", "updateRegistry");
+  graph.addEdge("updateRegistry", "snapshotManager");
+  graph.addEdge("snapshotManager", "selectNextTask");
 
 
 
@@ -120,3 +149,5 @@ export function buildPhase1Graph(options = {})
   return graph.compile({ checkpointer });
 
 }
+
+export const buildGraph = buildPhase1Graph;

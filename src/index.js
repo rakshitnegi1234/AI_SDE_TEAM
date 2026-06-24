@@ -1,9 +1,17 @@
 import * as readline from "readline";
 import dotenv from "dotenv";
+import { fileURLToPath } from "url";
 import { buildPhase1Graph } from "./config/graph.js";
 import { initGemini } from "./utils/gemini.js";
+
+export { buildGraph, buildPhase1Graph } from "./config/graph.js";
+export { AgentState } from "./config/state.js";
+export { coderAgentNode } from "./agents/coderAgent.js";
+export { contextBuilderNode } from "./nodes/contextBuilder.js";
+export { selectNextTaskNode, selectNextTaskRouter } from "./nodes/selectNextTask.js";
+export { snapshotManagerNode } from "./nodes/snapshotManager.js";
+export { updateRegistryNode } from "./nodes/updateRegistry.js";
 dotenv.config({ path: new URL("../.env", import.meta.url) });
-initGemini(process.env.GEMINI_API_KEY);
 
 async function getRequirement() {
   return askUser("Requirement: ");
@@ -27,6 +35,7 @@ function askUser(question) {
 
 
 async function main() {
+  initGemini(process.env.GEMINI_API_KEY);
 
   const requirement = await getRequirement();
 
@@ -50,7 +59,7 @@ async function main() {
         thread_id: `phase1-${Date.now()}`,
       },
 
-      recursionLimit: 20,
+      recursionLimit: 100,
     }
   );
 
@@ -86,9 +95,11 @@ async function main() {
   process.exit(1);
 }
 
-// Start program and catch unexpected errors
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exit(1);
-});
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}
