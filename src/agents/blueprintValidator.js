@@ -1,226 +1,313 @@
-/**
- * blueprintValidator.js — Blueprint Cross-Validator ⭐ NEW V2
- * 
- * FIRST PRINCIPLES:
- * In the V1 design, the Architect's output went directly to the Planner.
- * Problem: if the Architect designed an API endpoint for a table that 
- * doesn't exist, the Coder would write broken code 10 steps later.
- * 
- * The Blueprint Validator sits BETWEEN Architect and Planner.
- * Its ONLY job: find contradictions in the blueprint BEFORE 
- * any code is written. Catch problems early = save tokens later.
- * 
- * WHAT IT CHECKS:
- * 1. Every API endpoint references a table that exists in the schema
- * 2. Every frontend page calls APIs that actually exist
- * 3. Every foreign key references an existing table and field
- * 4. Every entity from the spec has at least one DB table
- * 5. Auth/role requirements are consistent (API says "admin only" → page respects that)
- * 6. No orphan tables (table exists but no API uses it)
- * 
- * WHY NOT USE LLM FOR THIS?
- * Validation is deterministic logic — comparing strings, checking existence.
- * Using an LLM here would be wasteful and unreliable. 
- * Pure code = 100% accurate, zero tokens, instant execution.
- * 
- * ROUTING:
- * - Valid → goes to Planner
- * - DB issues → routes back to architectStep2
- * - API issues → routes back to architectStep3
- * - Page issues → routes back to architectStep4
- * - Max 2 validation loops, then force proceed with warnings
- */
-
 const MAX_VALIDATION_CYCLES = 2;
 
-/**
- * Blueprint Validator node function
- */
 export async function blueprintValidatorNode(state) {
-  console.log("\n🔍 [Blueprint Validator] Cross-validating architecture...\n");
+  console.log("\n[Blueprint Validator] Cross-validating architecture\n");
 
-  const { dbSchema, apiEndpoints, frontendPages, entities } = state.blueprint;
-  const currentCycles = state.blueprintValidation?.validationCycles || 0;
-
+  const blueprint = state.blueprint || {};
   const issues = [];
 
-  // ─── CHECK 1: Every entity has a DB table ──────────────────
+  checkEntityTables(blueprint, issues);
+  checkForeignKeys(blueprint, issues);
+  checkApiTables(blueprint, issues);
+  checkFrontendApiCalls(blueprint, issues);
+  checkAuthConsistency(blueprint, issues);
+  checkOrphanTables(blueprint, issues);
 
-  if (entities && dbSchema?.tables) {
-    const tableNames = new Set();
-    for (const t of dbSchema.tables) {
-      const name = t.name.toLowerCase();
-      tableNames.add(name);                          // "todo_items"
-      tableNames.add(name.replace(/s$/, ""));        // "todo_item"
-      tableNames.add(name.replace(/_/g, ""));        // "todoitems"
-      tableNames.add(name.replace(/_/g, "").replace(/s$/, "")); // "todoitem"
+  const hasCoreErrors = issues.some((issue) => issue.severity === "error");
+
+  if (!hasCoreErrors) {
+    checkFolderStructure(blueprint, issues);
+    checkDependencies(blueprint, issues);
+  }
+
+  return buildValidationResult(state, issues);
+}
+
+export function blueprintValidatorRouter(state) {
+  const validation = state.blueprintValidation;
+
+  if (validation?.isValid) {
+    return "__end__";
+  }
+
+  const issues = validation?.issues || [];
+  const errors = issues.filter((issue) => issue.severity === "error");
+  const target = errors[0]?.fixTarget || mostCommonFixTarget(issues);
+
+  if (!target) {
+    return "__end__";
+  }
+
+  console.log(`Routing back to ${target} for fixes\n`);
+  return target;
+}
+
+
+
+
+function checkEntityTables(blueprint, issues) {
+  const entities = blueprint.entities || [];
+  const tables = blueprint.dbSchema?.tables || [];
+  const tableNames = new Set(tables.map((table) => table.name?.toLowerCase()));
+
+  for (const entity of entities) {
+    const expectedTable = entity.tableName?.toLowerCase();
+    const fallbackTable = toSnakePlural(entity.name);
+
+    if (!tableNames.has(expectedTable || fallbackTable)) {
+      issues.push({
+        type: "missing_table",
+        severity: "error",
+        fixTarget: "architectStep2",
+        message: `Entity "${entity.name}" expects table "${expectedTable || fallbackTable}", but it was not found.`,
+      });
     }
+  }
+}
 
-    for (const entity of entities) {
-      // Convert PascalCase to snake_case: "TodoItem" → "todo_item"
-      const snakeName = entity.name
-        .replace(/([a-z])([A-Z])/g, "$1_$2")
-        .toLowerCase();
-      const plainName = entity.name.toLowerCase(); // "todoitem"
+function checkForeignKeys(blueprint, issues) {
+  const tables = blueprint.dbSchema?.tables || [];
+  const tableNames = new Set(tables.map((table) => table.name?.toLowerCase()));
 
-      const hasTable = tableNames.has(plainName) ||
-                       tableNames.has(plainName + "s") ||
-                       tableNames.has(snakeName) ||
-                       tableNames.has(snakeName + "s") ||
-                       tableNames.has(snakeName.replace(/y$/, "ie") + "s");
-      if (!hasTable) {
+  for (const table of tables) {
+    for (const foreignKey of table.foreignKeys || []) {
+      const referencedTable = getForeignKeyTable(foreignKey.references);
+
+      if (referencedTable && !tableNames.has(referencedTable)) {
         issues.push({
-          type: "missing_table",
+          type: "invalid_foreign_key",
           severity: "error",
           fixTarget: "architectStep2",
-          message: `Entity "${entity.name}" has no matching DB table. Tables: [${dbSchema.tables.map(t => t.name).join(", ")}]`,
+          message: `Table "${table.name}" references "${foreignKey.references}", but table "${referencedTable}" does not exist.`,
         });
       }
     }
   }
+}
 
-  // ─── CHECK 2: Foreign keys reference existing tables ───────
+function checkApiTables(blueprint, issues) {
+  const endpoints = blueprint.apiEndpoints || [];
+  const tableNames = new Set((blueprint.dbSchema?.tables || []).map((table) => table.name?.toLowerCase()));
 
-  if (dbSchema?.tables) {
-    const tableNameSet = new Set(dbSchema.tables.map(t => t.name.toLowerCase()));
+  for (const endpoint of endpoints) {
+    if (!endpoint.relatedTable) continue;
 
-    for (const table of dbSchema.tables) {
-      if (table.foreignKeys) {
-        for (const fk of table.foreignKeys) {
-          // Extract table name from "other_table(field)" format
-          const refMatch = fk.references?.match(/^(\w+)\(/);
-          if (refMatch) {
-            const refTable = refMatch[1].toLowerCase();
-            if (!tableNameSet.has(refTable)) {
-              issues.push({
-                type: "invalid_foreign_key",
-                severity: "error",
-                fixTarget: "architectStep2",
-                message: `Table "${table.name}" has FK referencing "${fk.references}" but table "${refTable}" does not exist.`,
-              });
-            }
-          }
+    if (endpoint.relatedTable.includes(",")) {
+      issues.push({
+        type: "invalid_related_table",
+        severity: "error",
+        fixTarget: "architectStep3",
+        message: `API "${endpoint.method} ${endpoint.path}" must use one relatedTable, not "${endpoint.relatedTable}".`,
+      });
+      continue;
+    }
+
+    const relatedTable = endpoint.relatedTable.toLowerCase();
+
+    if (!tableNames.has(relatedTable)) {
+      issues.push({
+        type: "orphan_endpoint",
+        severity: "error",
+        fixTarget: "architectStep3",
+        message: `API "${endpoint.method} ${endpoint.path}" references table "${relatedTable}", but that table does not exist.`,
+      });
+    }
+  }
+}
+
+function checkFrontendApiCalls(blueprint, issues) {
+
+  const frontendPages = blueprint.frontendPages || [];
+  const apiEndpoints = blueprint.apiEndpoints || [];
+
+  for (const page of frontendPages) {
+    for (const component of page.components || []) {
+      for (const apiCall of component.apiCalls || []) {
+        if (!hasMatchingEndpoint(apiCall, apiEndpoints)) {
+          issues.push({
+            type: "missing_api",
+            severity: "warning",
+            fixTarget: "architectStep3",
+            message: `Page "${page.name}" component "${component.name}" calls "${apiCall}", but no matching API endpoint exists.`,
+          });
         }
       }
     }
   }
+}
 
-  // ─── CHECK 3: API endpoints reference existing tables ──────
+function checkAuthConsistency(blueprint, issues) {
+  const frontendPages = blueprint.frontendPages || [];
+  const protectedEndpoints = (blueprint.apiEndpoints || []).filter((endpoint) => endpoint.requiresAuth);
 
-  if (apiEndpoints && dbSchema?.tables) {
-    const tableNameSet = new Set(dbSchema.tables.map(t => t.name.toLowerCase()));
+  for (const page of frontendPages) {
+    for (const component of page.components || []) {
+      const callsProtectedApi = (component.apiCalls || []).some((apiCall) =>
+        hasMatchingEndpoint(apiCall, protectedEndpoints)
+      );
 
-    for (const endpoint of apiEndpoints) {
-      if (endpoint.relatedTable) {
-        // relatedTable can be comma-separated: "todo_items, categories"
-        const tables = endpoint.relatedTable.split(",").map(t => t.trim().toLowerCase());
-        for (const tableName of tables) {
-          if (tableName && !tableNameSet.has(tableName)) {
-            issues.push({
-              type: "orphan_endpoint",
-              severity: "error",
-              fixTarget: "architectStep3",
-              message: `API "${endpoint.method} ${endpoint.path}" references table "${tableName}" which doesn't exist.`,
-            });
-          }
-        }
-      }
-    }
-  }
-
-  // ─── CHECK 4: Frontend pages reference existing APIs ───────
-
-  if (frontendPages && apiEndpoints) {
-    const apiPaths = new Set(
-      (Array.isArray(apiEndpoints) ? apiEndpoints : []).map(e => e.path?.toLowerCase())
-    );
-
-    for (const page of frontendPages) {
-      if (page.components) {
-        for (const comp of page.components) {
-          if (comp.apiCalls) {
-            for (const apiCall of comp.apiCalls) {
-              // Normalize: remove params like :id
-              const normalized = apiCall.toLowerCase().replace(/\/:\w+/g, "/:param");
-              const exists = [...apiPaths].some(path => {
-                const normPath = path?.replace(/\/:\w+/g, "/:param");
-                return normPath === normalized || path === apiCall.toLowerCase();
-              });
-              if (!exists) {
-                issues.push({
-                  type: "missing_api",
-                  severity: "warning",
-                  fixTarget: "architectStep3",
-                  message: `Page "${page.name}" → Component "${comp.name}" calls "${apiCall}" but no matching API endpoint exists.`,
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ─── CHECK 5: Auth consistency ─────────────────────────────
-
-  if (apiEndpoints && frontendPages) {
-    const authEndpoints = new Set(
-      (Array.isArray(apiEndpoints) ? apiEndpoints : [])
-        .filter(e => e.requiresAuth)
-        .map(e => e.path?.toLowerCase())
-    );
-
-    for (const page of frontendPages) {
-      if (page.components) {
-        for (const comp of page.components) {
-          if (comp.apiCalls) {
-            const callsAuthApi = comp.apiCalls.some(c => authEndpoints.has(c.toLowerCase()));
-            if (callsAuthApi && !page.requiresAuth) {
-              issues.push({
-                type: "auth_mismatch",
-                severity: "warning",
-                fixTarget: "architectStep4",
-                message: `Page "${page.name}" calls auth-required API but page.requiresAuth is false.`,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ─── CHECK 6: No orphan tables ─────────────────────────────
-
-  if (dbSchema?.tables && apiEndpoints) {
-    const referencedTables = new Set(
-      (Array.isArray(apiEndpoints) ? apiEndpoints : [])
-        .map(e => e.relatedTable?.toLowerCase())
-        .filter(Boolean)
-    );
-
-    for (const table of dbSchema.tables) {
-      // Skip junction/join tables and common system tables
-      const name = table.name.toLowerCase();
-      const isJunction = name.includes("_") && !["created_at", "updated_at"].some(f => name.includes(f));
-      
-      if (!referencedTables.has(name) && !isJunction) {
+      if (callsProtectedApi && !page.requiresAuth) {
         issues.push({
-          type: "orphan_table",
+          type: "auth_mismatch",
           severity: "warning",
-          fixTarget: "architectStep3",
-          message: `Table "${table.name}" exists but no API endpoint references it. Either add endpoints or remove the table.`,
+          fixTarget: "architectStep4",
+          message: `Page "${page.name}" calls an auth-required API but page.requiresAuth is false.`,
         });
       }
     }
   }
+}
 
-  // ─── DECIDE: Valid or route back ───────────────────────────
+function checkOrphanTables(blueprint, issues) {
+  const tables = blueprint.dbSchema?.tables || [];
+  const entityTables = new Set((blueprint.entities || []).map((entity) => entity.tableName?.toLowerCase()).filter(Boolean));
+  const referencedTables = new Set(
+    (blueprint.apiEndpoints || [])
+      .map((endpoint) => endpoint.relatedTable?.toLowerCase())
+      .filter(Boolean)
+  );
 
-  const errors = issues.filter(i => i.severity === "error");
-  const warnings = issues.filter(i => i.severity === "warning");
+  for (const table of tables) {
+    const tableName = table.name?.toLowerCase();
+
+    if (!referencedTables.has(tableName) && !isJoinTable(table, entityTables)) {
+      issues.push({
+        type: "orphan_table",
+        severity: "warning",
+        fixTarget: "architectStep3",
+        message: `Table "${table.name}" exists but no API endpoint references it.`,
+      });
+    }
+  }
+}
+
+function checkFolderStructure(blueprint, issues) {
+  const folderStructure = blueprint.folderStructure || "";
+  const requiredEntries = [
+    "backend/",
+    "frontend/",
+    "package.json",
+    ".env.example",
+    "server.js",
+    "app.js",
+    "config/",
+    "models/",
+    "routes/",
+    "controllers/",
+    "middleware/",
+    "utils/",
+    "index.html",
+    "vite.config.js",
+    "tailwind.config.js",
+    "postcss.config.js",
+    "main.jsx",
+    "App.jsx",
+    "pages/",
+    "components/",
+    "context/",
+    "hooks/",
+  ];
+
+  for (const entry of requiredEntries) {
+    if (!folderStructure.includes(entry)) {
+      issues.push({
+        type: "missing_folder_entry",
+        severity: "warning",
+        fixTarget: "architectStep5",
+        message: `Folder structure is missing "${entry}".`,
+      });
+    }
+  }
+}
+
+function checkDependencies(blueprint, issues) {
+  const dependencies = blueprint.dependencies || {};
+  const backendDeps = dependencies.backend?.dependencies || {};
+  const backendDevDeps = dependencies.backend?.devDependencies || {};
+  const frontendDeps = dependencies.frontend?.dependencies || {};
+  const frontendDevDeps = dependencies.frontend?.devDependencies || {};
+
+  requirePackages(backendDeps, {
+    express: "^4.18.2",
+    cors: "^2.8.5",
+    dotenv: "^16.4.7",
+    bcryptjs: "^2.4.3",
+    jsonwebtoken: "^9.0.2",
+    uuid: "^9.0.0",
+  }, "backend dependency", "architectStep5", issues);
+
+  requirePackages(backendDevDeps, {
+    nodemon: "^3.0.0",
+  }, "backend devDependency", "architectStep5", issues);
+
+  requirePackages(frontendDeps, {
+    react: "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    axios: "^1.6.0",
+  }, "frontend dependency", "architectStep5", issues);
+
+  requirePackages(frontendDevDeps, {
+    vite: "^5.0.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    tailwindcss: "^3.4.0",
+    postcss: "^8.4.0",
+    autoprefixer: "^10.4.0",
+  }, "frontend devDependency", "architectStep5", issues);
+
+  checkDatabasePackage(blueprint.dbSchema?.databaseType, backendDeps, issues);
+}
+
+function checkDatabasePackage(databaseType = "", backendDeps, issues) {
+  const normalizedType = databaseType.toLowerCase();
+
+  if (normalizedType === "postgresql") {
+    requirePackages(backendDeps, { pg: "^8.11.0" }, "backend dependency", "architectStep5", issues);
+
+    if (backendDeps.mongoose) {
+      issues.push({
+        type: "wrong_database_dependency",
+        severity: "warning",
+        fixTarget: "architectStep5",
+        message: "PostgreSQL projects should not include mongoose unless both databases are required.",
+      });
+    }
+  }
+
+  if (normalizedType === "mongodb") {
+    requirePackages(backendDeps, { mongoose: "^8.8.0" }, "backend dependency", "architectStep5", issues);
+
+    if (backendDeps.pg) {
+      issues.push({
+        type: "wrong_database_dependency",
+        severity: "warning",
+        fixTarget: "architectStep5",
+        message: "MongoDB projects should not include pg unless both databases are required.",
+      });
+    }
+  }
+}
+
+function requirePackages(actualPackages, expectedPackages, packageType, fixTarget, issues) {
+  for (const [name, version] of Object.entries(expectedPackages)) {
+    if (actualPackages[name] !== version) {
+      issues.push({
+        type: "missing_dependency",
+        severity: "warning",
+        fixTarget,
+        message: `Expected ${packageType} "${name}" at version "${version}".`,
+      });
+    }
+  }
+}
+
+function buildValidationResult(state, issues) {
+  const currentCycles = state.blueprintValidation?.validationCycles || 0;
+  const errors = issues.filter((issue) => issue.severity === "error");
+  const warnings = issues.filter((issue) => issue.severity === "warning");
 
   if (issues.length === 0) {
-    console.log("   ✅ Blueprint is VALID — all cross-checks passed!");
+    console.log("Blueprint is valid");
     return {
       blueprintValidation: {
         isValid: true,
@@ -231,65 +318,95 @@ export async function blueprintValidatorNode(state) {
     };
   }
 
-  // If we've exceeded max validation cycles, force proceed
+  console.log(`Found ${errors.length} errors and ${warnings.length} warnings`);
+  issues.forEach((issue) => console.log(`${issue.severity}: ${issue.message}`));
+
   if (currentCycles >= MAX_VALIDATION_CYCLES) {
-    console.log(`   ⚠️ Max validation cycles (${MAX_VALIDATION_CYCLES}) reached. Proceeding with warnings.`);
-    console.log(`   ${errors.length} errors, ${warnings.length} warnings (unresolved)`);
-    issues.forEach(i => console.log(`   ${i.severity === "error" ? "❌" : "⚠️"} ${i.message}`));
+    console.log("Max validation cycles reached. Proceeding with warnings.");
     return {
       blueprintValidation: {
-        isValid: true, // Force proceed
-        issues: issues,
+        isValid: true,
+        issues,
         validationCycles: currentCycles + 1,
       },
       currentPhase: "planner",
     };
   }
 
-  // Route back to the right architect step
-  console.log(`   ❌ Found ${errors.length} errors, ${warnings.length} warnings (cycle ${currentCycles + 1}/${MAX_VALIDATION_CYCLES})`);
-  issues.forEach(i => console.log(`   ${i.severity === "error" ? "❌" : "⚠️"} ${i.message}`));
-
   return {
     blueprintValidation: {
       isValid: false,
-      issues: issues,
+      issues,
       validationCycles: currentCycles + 1,
     },
   };
 }
 
-/**
- * Determine which architect step to route back to based on issues.
- * Used as a conditional edge function.
- */
-export function blueprintValidatorRouter(state) {
-  const validation = state.blueprintValidation;
+function hasMatchingEndpoint(apiCall, endpoints) {
+  const call = parseApiCall(apiCall);
 
-  if (validation?.isValid) {
-    return "__end__"; // Phase 2 ends here. Phase 3 will route to planner.
+  return endpoints.some((endpoint) => {
+    const endpointPath = normalizeApiPath(endpoint.path);
+    const samePath = endpointPath === call.path;
+    const sameMethod = !call.method || endpoint.method?.toLowerCase() === call.method;
+
+    return samePath && sameMethod;
+  });
+}
+
+function parseApiCall(apiCall = "") {
+  const value = String(apiCall).trim().toLowerCase();
+  const match = value.match(/^(get|post|put|patch|delete)\s+(.+)$/);
+
+  if (!match) {
+    return {
+      method: "",
+      path: normalizeApiPath(value),
+    };
   }
 
-  // Find the highest-priority fix target
-  const errors = validation?.issues?.filter(i => i.severity === "error") || [];
-  
-  if (errors.length > 0) {
-    // Route to the first error's fix target
-    const target = errors[0].fixTarget;
-    console.log(`   🔄 Routing back to ${target} for fixes...\n`);
-    return target;
+  return {
+    method: match[1],
+    path: normalizeApiPath(match[2]),
+  };
+}
+
+function normalizeApiPath(apiPath = "") {
+  return String(apiPath)
+    .trim()
+    .toLowerCase()
+    .replace(/\/:\w+/g, "/:param");
+}
+
+function getForeignKeyTable(reference = "") {
+  const match = reference.match(/^(\w+)\(/);
+  return match?.[1]?.toLowerCase() || "";
+}
+
+function isJoinTable(table, entityTables) {
+  const tableName = table.name?.toLowerCase() || "";
+  return !entityTables.has(tableName) && tableName.includes("_") && (table.foreignKeys || []).length >= 2;
+}
+
+function toSnakePlural(name = "") {
+  const snakeName = name
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+
+  if (snakeName.endsWith("y")) {
+    return `${snakeName.slice(0, -1)}ies`;
   }
 
-  // Only warnings — route to the most common fix target
-  const targets = (validation?.issues || []).map(i => i.fixTarget);
-  const targetCounts = {};
-  targets.forEach(t => { targetCounts[t] = (targetCounts[t] || 0) + 1; });
-  const topTarget = Object.entries(targetCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  return snakeName.endsWith("s") ? snakeName : `${snakeName}s`;
+}
 
-  if (topTarget) {
-    console.log(`   🔄 Routing back to ${topTarget} for fixes...\n`);
-    return topTarget;
+function mostCommonFixTarget(issues) {
+  const counts = {};
+
+  for (const issue of issues) {
+    if (!issue.fixTarget) continue;
+    counts[issue.fixTarget] = (counts[issue.fixTarget] || 0) + 1;
   }
 
-  return "__end__";
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
 }

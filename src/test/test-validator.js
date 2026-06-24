@@ -163,10 +163,69 @@ async function test4() {
           route: "/dashboard",
           requiresAuth: true,
           components: [
-            { name: "TaskList", description: "Shows tasks", apiCalls: ["/api/tasks"] },
+            { name: "TaskList", description: "Shows tasks", apiCalls: ["GET /api/tasks"] },
           ],
         },
       ],
+      folderStructure: `
+backend/
+  package.json
+  .env.example
+  src/
+    server.js
+    app.js
+    config/
+    models/
+    routes/
+    controllers/
+    middleware/
+    utils/
+frontend/
+  package.json
+  index.html
+  vite.config.js
+  tailwind.config.js
+  postcss.config.js
+  src/
+    main.jsx
+    App.jsx
+    pages/
+    components/
+    context/
+    hooks/
+    utils/
+`,
+      dependencies: {
+        backend: {
+          dependencies: {
+            express: "^4.18.2",
+            cors: "^2.8.5",
+            dotenv: "^16.4.7",
+            bcryptjs: "^2.4.3",
+            jsonwebtoken: "^9.0.2",
+            uuid: "^9.0.0",
+            pg: "^8.11.0",
+          },
+          devDependencies: {
+            nodemon: "^3.0.0",
+          },
+        },
+        frontend: {
+          dependencies: {
+            react: "^18.2.0",
+            "react-dom": "^18.2.0",
+            "react-router-dom": "^6.20.0",
+            axios: "^1.6.0",
+          },
+          devDependencies: {
+            vite: "^5.0.0",
+            "@vitejs/plugin-react": "^4.2.0",
+            tailwindcss: "^3.4.0",
+            postcss: "^8.4.0",
+            autoprefixer: "^10.4.0",
+          },
+        },
+      },
     },
     blueprintValidation: { isValid: false, issues: [], validationCycles: 0 },
   };

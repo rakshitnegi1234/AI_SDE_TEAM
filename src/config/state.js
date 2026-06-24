@@ -32,8 +32,9 @@ export const AgentState = Annotation.Root({
 
   pmConversation: Annotation(
   {
-    reducer:(prevconversation, newconversation) => 
+    reducer:(prevconversation, newconversation) =>  
       {
+
       if (!newconversation) return prevconversation;
 
       if (Array.isArray(newconversation))
@@ -53,32 +54,35 @@ export const AgentState = Annotation.Root({
       default: () => null,
   }),
 
-
-
-
-
-  // ─── ARCHITECT AGENT ──────────────────────────────────────
-
-  // Built across 5 steps, each step adds to the blueprint
+  // ARCHITECT AGENT ( Built In 5 Steps )
 
   blueprint: Annotation({
-    reducer: (existingBlueprint, incomingBlueprint) => {
-      if (!incomingBlueprint) return existingBlueprint;
+
+    reducer: (prevBlueprint, newBlueprint) => {
+      
+      if (!prevBlueprint) return newBlueprint;
 
       return {
-        ...existingBlueprint,
-        ...incomingBlueprint,
+        ...prevBlueprint,
+        ...newBlueprint,
       };
     },
+
     default: () => ({
       entities: [],
       dbSchema: {},
       apiEndpoints: [],
       frontendPages: [],
+      sharedComponents: [],
+      routingNotes: [],
       folderStructure: "",
       dependencies: {},
     }),
   }),
+
+
+
+
 
   // ─── BLUEPRINT VALIDATOR ──────────────────────────────────
   blueprintValidation: Annotation({
@@ -95,6 +99,22 @@ export const AgentState = Annotation.Root({
     }),
   }),
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
   // ─── PLANNER AGENT ────────────────────────────────────────
   taskQueue: Annotation({
     reducer: (previousTaskQueue, incomingTaskQueue) =>

@@ -76,6 +76,7 @@ Produce status "spec_ready" if:
 DO NOT PRODUCE SPEC_READY IF:
 
 * The user did not answer the questions.
+
 * The user gave a vague response such as "what do you want", "anything", "you decide", "not sure", or a similarly non-specific answer.
 
 * The user response does not map clearly to the clarification questions.
@@ -97,6 +98,7 @@ Before creating a final spec, compare the user's answer against each question yo
 * Do not treat words like "all", "and all", "task tracking and all", "why you want", "bie bie", "bye", or "what is this" as valid answers to unanswered questions.
 
 * If the user answers only one question and ignores the rest, ask only the ignored questions again.
+
 * If part of the answer is useful and part is unclear, keep the useful part as context and ask only for the unclear part.
 
 * If the user says "personal and all" for a todo app, interpret only "personal" as answered. Ask again about the remaining unresolved feature questions.
