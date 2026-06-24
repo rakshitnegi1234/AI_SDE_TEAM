@@ -12,12 +12,22 @@ import {
   blueprintValidatorRouter,
 } from "../agents/blueprintValidator.js";
 import { coderAgentNode } from "../agents/coderAgent.js";
+import { debuggerAgentNode, debuggerRouter } from "../agents/debuggerAgent.js";
+import { executorAgentNode, executorRouter } from "../agents/executorAgent.js";
 import { plannerAgentNode } from "../agents/plannerAgent.js";
+import { reviewerAgentNode, reviewerRouter } from "../agents/reviewerAgent.js";
 import { contextBuilderNode } from "../nodes/contextBuilder.js";
+import {
+  deploymentVerifierNode,
+  deploymentVerifierRouter,
+} from "../nodes/deploymentVerifier.js";
+import { humanEscalationNode, humanEscalationRouter } from "../nodes/humanEscalation.js";
 import { humanInputNode } from "../nodes/humanInput.js";
+import { presentToUserNode } from "../nodes/presentToUser.js";
 import { sandboxHealthCheckNode } from "../nodes/sandboxHealthCheck.js";
 import { selectNextTaskNode, selectNextTaskRouter } from "../nodes/selectNextTask.js";
 import { setupSandboxNode } from "../nodes/setupSandbox.js";
+import { simplifyTaskNode } from "../nodes/simplifyTask.js";
 import { snapshotManagerNode } from "../nodes/snapshotManager.js";
 import { updateRegistryNode } from "../nodes/updateRegistry.js";
 import { AgentState } from "./state.js";
@@ -103,7 +113,14 @@ export function buildPhase1Graph(options = {})
   const contextNode = options.contextBuilderNode || contextBuilderNode;
   const coderNode = options.coderAgentNode || coderAgentNode;
   const registryNode = options.updateRegistryNode || updateRegistryNode;
+  const reviewerNode = options.reviewerAgentNode || reviewerAgentNode;
+  const executorNode = options.executorAgentNode || executorAgentNode;
+  const debuggerNode = options.debuggerAgentNode || debuggerAgentNode;
+  const simplifyNode = options.simplifyTaskNode || simplifyTaskNode;
+  const escalationNode = options.humanEscalationNode || humanEscalationNode;
   const snapshotNode = options.snapshotManagerNode || snapshotManagerNode;
+  const deploymentNode = options.deploymentVerifierNode || deploymentVerifierNode;
+  const presentationNode = options.presentToUserNode || presentToUserNode;
 
   graph.addNode("plannerAgent", plannerNode);
   graph.addNode("setupSandbox", setupNode);
@@ -112,7 +129,14 @@ export function buildPhase1Graph(options = {})
   graph.addNode("contextBuilder", contextNode);
   graph.addNode("coderAgent", coderNode);
   graph.addNode("updateRegistry", registryNode);
+  graph.addNode("reviewerAgent", reviewerNode);
+  graph.addNode("executorAgent", executorNode);
+  graph.addNode("debuggerAgent", debuggerNode);
+  graph.addNode("simplifyTask", simplifyNode);
+  graph.addNode("humanEscalation", escalationNode);
   graph.addNode("snapshotManager", snapshotNode);
+  graph.addNode("deploymentVerifier", deploymentNode);
+  graph.addNode("presentToUser", presentationNode);
 
   graph.addConditionalEdges("plannerAgent", (state) => {
     return state.error ? END : "setupSandbox";
@@ -127,16 +151,42 @@ export function buildPhase1Graph(options = {})
     return "selectNextTask";
   });
 
-  // PHASE 4 MINIMAL DEV LOOP
+  // CODING PHASE
 
   graph.addConditionalEdges("selectNextTask", selectNextTaskRouter, {
     contextBuilder: "contextBuilder",
-    __end__: END,
+    __end__: "deploymentVerifier",
   });
+
+
   graph.addEdge("contextBuilder", "coderAgent");
   graph.addEdge("coderAgent", "updateRegistry");
-  graph.addEdge("updateRegistry", "snapshotManager");
+  graph.addEdge("updateRegistry", "reviewerAgent");
+  graph.addConditionalEdges("reviewerAgent", reviewerRouter, {
+    executorAgent: "executorAgent",
+    simplifyTask: "simplifyTask",
+    contextBuilder: "contextBuilder",
+  });
+  graph.addConditionalEdges("executorAgent", executorRouter, {
+    snapshotManager: "snapshotManager",
+    debuggerAgent: "debuggerAgent",
+  });
+  graph.addConditionalEdges("debuggerAgent", debuggerRouter, {
+    humanEscalation: "humanEscalation",
+    contextBuilder: "contextBuilder",
+  });
+  graph.addConditionalEdges("humanEscalation", humanEscalationRouter, {
+    selectNextTask: "selectNextTask",
+    simplifyTask: "simplifyTask",
+    contextBuilder: "contextBuilder",
+  });
+  graph.addEdge("simplifyTask", "selectNextTask");
   graph.addEdge("snapshotManager", "selectNextTask");
+  graph.addConditionalEdges("deploymentVerifier", deploymentVerifierRouter, {
+    presentToUser: "presentToUser",
+    debuggerAgent: "debuggerAgent",
+  });
+  graph.addEdge("presentToUser", END);
 
 
 
