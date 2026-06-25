@@ -14,8 +14,11 @@ export {
   deploymentVerifierRouter,
 } from "./nodes/deploymentVerifier.js";
 export { executorAgentNode, executorRouter } from "./agents/executorAgent.js";
+export {
+  plannerValidatorNode,
+  plannerValidatorRouter,
+} from "./agents/plannerValidator.js";
 export { reviewerAgentNode, reviewerRouter } from "./agents/reviewerAgent.js";
-export { humanEscalationNode, humanEscalationRouter } from "./nodes/humanEscalation.js";
 export { presentToUserNode } from "./nodes/presentToUser.js";
 export { selectNextTaskNode, selectNextTaskRouter } from "./nodes/selectNextTask.js";
 export { simplifyTaskNode } from "./nodes/simplifyTask.js";
@@ -54,7 +57,7 @@ async function main() {
     process.exit(0);
   }
 
-  const graph = buildPhase1Graph();
+  const graph = await buildPhase1Graph();
 
   //  await graph.invoke(inputState, config)
 

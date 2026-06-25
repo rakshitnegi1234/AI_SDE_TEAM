@@ -3,7 +3,7 @@
  *
  * Verifies the merged Phase 1 + Phase 2 + Phase 3 flow:
  * START -> pmAgent -> humanInput -> pmAgent -> architect steps -> validator
- * -> planner -> setupSandbox -> sandboxHealthCheck -> END
+ * -> planner -> plannerValidator -> setupSandbox -> sandboxHealthCheck -> END
  */
 
 import { MemorySaver } from "@langchain/langgraph";
@@ -27,7 +27,7 @@ function assert(condition, message) {
 async function runTest() {
   const nodeOrder = [];
 
-  const graph = buildPhase1Graph({
+  const graph = await buildPhase1Graph({
     checkpointer: new MemorySaver(),
     pmAgentNode: (state) => {
       nodeOrder.push("pmAgent");
@@ -137,6 +137,16 @@ async function runTest() {
         currentTaskIndex: 0,
       };
     },
+    plannerValidatorNode: () => {
+      nodeOrder.push("plannerValidator");
+      return {
+        plannerValidation: {
+          isValid: true,
+          issues: [],
+          validationCycles: 1,
+        },
+      };
+    },
     setupSandboxNode: () => {
       nodeOrder.push("setupSandbox");
       return {
@@ -168,6 +178,7 @@ async function runTest() {
     "architectStep5",
     "blueprintValidator",
     "plannerAgent",
+    "plannerValidator",
     "setupSandbox",
     "sandboxHealthCheck",
   ];
@@ -179,6 +190,7 @@ async function runTest() {
   assert(finalState.pmStatus === "spec_ready", "PM finished with spec_ready");
   assert(finalState.clarifiedSpec?.appName === "test-app", "Clarified spec is stored");
   assert(finalState.blueprintValidation?.isValid === true, "Blueprint validation is stored");
+  assert(finalState.plannerValidation?.isValid === true, "Planner validation is stored");
   assert(finalState.taskQueue?.totalTasks === 1, "Planner task queue is stored");
   assert(finalState.sandboxId === "sandbox-test", "Sandbox ID is stored");
   assert(finalState.sandboxHealthy === true, "Sandbox health is stored");

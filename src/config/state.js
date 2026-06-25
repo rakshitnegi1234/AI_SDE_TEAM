@@ -104,6 +104,16 @@ export const AgentState = Annotation.Root({
       default: () => ({ phases: [] }),
   }),
 
+  plannerValidation: Annotation({
+    reducer: (previousValidation, incomingValidation) =>
+      incomingValidation ?? previousValidation,
+    default: () => ({
+      isValid: false,
+      issues: [],
+      validationCycles: 0,
+    }),
+  }),
+
   currentPhaseIndex: Annotation({
      reducer: (prevPhase, newPhase) =>
       newPhase ?? prevPhase,

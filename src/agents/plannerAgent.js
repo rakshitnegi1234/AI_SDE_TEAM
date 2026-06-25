@@ -166,10 +166,11 @@ export async function plannerAgentNode(state) {
   const { blueprint, clarifiedSpec } = state;
 
   const blueprintSummary = summarizeBlueprint(blueprint);
+  const validationFeedback = buildValidationFeedback(state.plannerValidation);
 
   const result = await safeCallGemini({
     systemPrompt: PLANNER_PROMPT,
-    userPrompt: `This is the app name: ${clarifiedSpec.appName}\n\nThis is the blueprint summary:\n${JSON.stringify(blueprintSummary, null, 2)}\n\nUse this project specification as the source of truth:\n${JSON.stringify(clarifiedSpec, null, 2)}`,
+    userPrompt: `This is the app name: ${clarifiedSpec.appName}\n\nThis is the blueprint summary:\n${JSON.stringify(blueprintSummary, null, 2)}\n\nUse this project specification as the source of truth:\n${JSON.stringify(clarifiedSpec, null, 2)}${validationFeedback}`,
     agentName: "plannerAgent",
   });
 
@@ -185,4 +186,16 @@ export async function plannerAgentNode(state) {
     currentPhaseIndex: 0,
     currentTaskIndex: 0,
   };
+}
+
+function buildValidationFeedback(plannerValidation) {
+  const issues = plannerValidation?.issues || [];
+
+  if (issues.length === 0) {
+    return "";
+  }
+
+  return `\n\nPrevious planner output failed validation. Fix these issues exactly:\n${issues
+    .map((issue) => `- ${issue.message}`)
+    .join("\n")}`;
 }
