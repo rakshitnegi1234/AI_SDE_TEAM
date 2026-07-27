@@ -12,6 +12,7 @@ The current supported stack is intentionally constrained:
 ## Architecture Diagram
 
 Paste the architecture diagram here.
+![Uploading image.png…]()
 
 ```text
 [diagram placeholder]
