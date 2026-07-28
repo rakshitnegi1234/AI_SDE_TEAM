@@ -51,6 +51,39 @@ Generated apps:
 
 <img width="986" height="773" alt="image" src="https://github.com/user-attachments/assets/8544c9a5-bd01-45f6-974b-d103378b4fd4" />
 
+```text
+User Requirement
+      |
+      v
+pmAgent <-> humanInput
+      |
+      v
+architectStep1 -> architectStep2 -> architectStep3 -> architectStep4 -> architectStep5
+      |              |                 |                 |                 |
+      |              |                 |                 |                 v
+      +--------------+-----------------+-----------------+---------> blueprintValidator
+                                                                    |
+                                                                    v
+                                                            plannerAgent
+                                                                    |
+                                                                    v
+                                                            plannerValidator
+                                                                    |
+                                                                    v
+                                                            setupSandbox
+                                                                    |
+                                                                    v
+selectNextTask -> contextBuilder -> coderAgent -> updateRegistry -> executorAgent
+      ^                                                           |        |
+      |                                                           |        |
+      |                                                      snapshot   debuggerAgent
+      |                                                           |        |
+      +-----------------------------------------------------------+--------+
+                                                                    |
+                                                                    v
+                                                            presentToUser
+```
+
 `setupSandbox` includes the sandbox health check. There is no separate `sandboxHealthCheck` node in the current graph.
 
 ## Pipeline
@@ -95,13 +128,13 @@ Create `.env` in this directory:
 
 ```bash
 GEMINI_API_KEY=your-key-here
-GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-2.5-flash
 GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-GEMINI_MAX_TOKENS=8192
-GEMINI_TIMEOUT_MS=120000
+GEMINI_MAX_OUTPUT_TOKENS=65536
+GEMINI_TIMEOUT_MS=60000
 GEMINI_REQUESTS_BEFORE_SLEEP=14
 GEMINI_REQUEST_SLEEP_MS=58000
-GEMINI_MAX_RETRY_ATTEMPTS=6
+GEMINI_MAX_RETRY_ATTEMPTS=4
 GRAPH_RECURSION_LIMIT=500
 ```
 
@@ -240,3 +273,13 @@ Generated sandboxes are written under `SANDBOX_DIR` or `sandboxes/` by default. 
 - Old Docker containers and sandboxes should be cleaned periodically.
 - There is no full CI test suite yet.
 
+## Resume Summary
+
+This project demonstrates:
+
+- Full-stack React/Node development.
+- REST API and WebSocket integration.
+- Multi-agent LLM orchestration with validation and repair loops.
+- Docker-based sandbox execution.
+- Cloud deployment planning with Vercel and EC2.
+- Practical debugging, runtime checks, and snapshot rollback.

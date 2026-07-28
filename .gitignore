@@ -47,6 +47,15 @@ node_modules/
 jspm_packages/
 sandboxes/
 
+# Project-local runtime/generated files
+.agents/
+.codex/
+frontend/node_modules/
+frontend/dist/
+sandboxes/
+tmp/
+temp/
+
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
 
