@@ -14,42 +14,8 @@ The current supported generated app stack is intentionally constrained:
 - Checkpointing: LangGraph `MemorySaver` by default, Redis-backed when `REDIS_URL` is configured
 
 ## Architecture Diagram
+<img width="986" height="773" alt="image" src="https://github.com/user-attachments/assets/8544c9a5-bd01-45f6-974b-d103378b4fd4" />
 
-```text
-User Requirement
-      |
-      v
-pmAgent <-> humanInput
-      |
-      v
-architectStep1 -> architectStep2 -> architectStep3 -> architectStep4 -> architectStep5
-      |              |                 |                 |                 |
-      |              |                 |                 |                 v
-      +--------------+-----------------+-----------------+---------> blueprintValidator
-                                                                    |
-                                                                    v
-                                                            plannerAgent
-                                                                    |
-                                                                    v
-                                                            plannerValidator
-                                                                    |
-                                                                    v
-                                                            setupSandbox
-                                                                    |
-                                                                    v
-                                                            sandboxHealthCheck
-                                                                    |
-                                                                    v
-selectNextTask -> contextBuilder -> coderAgent -> updateRegistry -> executorAgent
-      ^                                                           |        |
-      |                                                           |        |
-      |                                                      snapshot   debuggerAgent
-      |                                                           |        |
-      +-----------------------------------------------------------+--------+
-                                                                    |
-                                                                    v
-                                                            presentToUser
-```
 
 ## Workflow
 
