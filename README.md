@@ -51,40 +51,7 @@ Generated apps:
 
 <img width="986" height="773" alt="image" src="https://github.com/user-attachments/assets/8544c9a5-bd01-45f6-974b-d103378b4fd4" />
 
-```text
-User Requirement
-      |
-      v
-pmAgent <-> humanInput
-      |
-      v
-architectStep1 -> architectStep2 -> architectStep3 -> architectStep4 -> architectStep5
-      |              |                 |                 |                 |
-      |              |                 |                 |                 v
-      +--------------+-----------------+-----------------+---------> blueprintValidator
-                                                                    |
-                                                                    v
-                                                            plannerAgent
-                                                                    |
-                                                                    v
-                                                            plannerValidator
-                                                                    |
-                                                                    v
-                                                            setupSandbox
-                                                                    |
-                                                                    v
-selectNextTask -> contextBuilder -> coderAgent -> updateRegistry -> executorAgent
-      ^                                                           |        |
-      |                                                           |        |
-      |                                                      snapshot   debuggerAgent
-      |                                                           |        |
-      +-----------------------------------------------------------+--------+
-                                                                    |
-                                                                    v
-                                                            presentToUser
-```
 
-`setupSandbox` includes the sandbox health check. There is no separate `sandboxHealthCheck` node in the current graph.
 
 ## Pipeline
 
